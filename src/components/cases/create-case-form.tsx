@@ -247,6 +247,7 @@ export function CreateCaseForm({ role, tags }: { role: RoleCode; tags: MasterVal
               />
             </FieldSet>
 
+            {/* eslint-disable-next-line react-hooks/incompatible-library -- RHF watch() cannot be memoized; skipping memoization of this form is intentional and safe. */}
             {form.watch("consent") !== "NOT_RECORDED" ? (
               <Field>
                 <FieldLabel htmlFor="consentNotes">Consent notes</FieldLabel>

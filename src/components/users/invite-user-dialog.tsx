@@ -27,9 +27,9 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { ROLE_LABELS } from "@/lib/permissions";
 import { ROLE_CODES, type RoleCode } from "@/lib/types";
-import { inviteUser } from "@/server/actions/users";
+import { createUser } from "@/server/actions/users";
 
-/** Invites a new account. Supabase emails the recipient a set-password link. */
+/** Creates a new account with a password set by the administrator. */
 export function InviteUserDialog() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -37,6 +37,7 @@ export function InviteUserDialog() {
 
   const [email, setEmail] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [password, setPassword] = useState("");
   const [roleCode, setRoleCode] = useState<RoleCode>("STAFF");
   const [error, setError] = useState<string | null>(null);
 
@@ -44,16 +45,17 @@ export function InviteUserDialog() {
     setError(null);
 
     startTransition(async () => {
-      const result = await inviteUser({ email, displayName, roleCode });
+      const result = await createUser({ email, displayName, password, roleCode });
 
       if (!result.ok) {
         setError(result.error.message);
         return;
       }
 
-      toast.success("Invitation sent");
+      toast.success("Account created");
       setEmail("");
       setDisplayName("");
+      setPassword("");
       setRoleCode("STAFF");
       setOpen(false);
       router.refresh();
@@ -65,16 +67,17 @@ export function InviteUserDialog() {
       <DialogTrigger asChild>
         <Button>
           <UserPlus aria-hidden />
-          Invite user
+          Create user
         </Button>
       </DialogTrigger>
 
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Invite a user</DialogTitle>
+          <DialogTitle>Create a user</DialogTitle>
           <DialogDescription>
-            The recipient receives an email link to set their own password. Their role governs what
-            they can do, enforced on the server and in the database.
+            Give the person their sign-in email and initial password. Passwords are never sent by
+            email, and there is no self-service password reset. Their role governs what they can do,
+            enforced on the server and in the database.
           </DialogDescription>
         </DialogHeader>
 
@@ -107,6 +110,19 @@ export function InviteUserDialog() {
           </Field>
 
           <Field>
+            <FieldLabel htmlFor="invite-password">Password</FieldLabel>
+            <Input
+              id="invite-password"
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              autoComplete="new-password"
+            />
+            <FieldDescription>At least 12 characters.</FieldDescription>
+            <FieldError />
+          </Field>
+
+          <Field>
             <FieldLabel htmlFor="invite-role">Role</FieldLabel>
             <Select value={roleCode} onValueChange={(value) => setRoleCode(value as RoleCode)}>
               <SelectTrigger id="invite-role" className="w-full">
@@ -134,10 +150,12 @@ export function InviteUserDialog() {
           </Button>
           <Button
             onClick={submit}
-            disabled={pending || email.trim() === "" || displayName.trim() === ""}
+            disabled={
+              pending || email.trim() === "" || displayName.trim() === "" || password.length < 12
+            }
           >
             {pending ? <Spinner /> : null}
-            Send invitation
+            Create account
           </Button>
         </DialogFooter>
       </DialogContent>

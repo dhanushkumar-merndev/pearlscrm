@@ -1,0 +1,32 @@
+{
+  // Cloudflare Workers config for the @opennextjs/cloudflare adapter.
+  //
+  // Secrets (SUPABASE_SERVICE_ROLE_KEY, TIGRIS_*) are NOT committed here —
+  // set them with:
+  //   wrangler secret put SUPABASE_SERVICE_ROLE_KEY
+  //   wrangler secret put TIGRIS_ENDPOINT
+  //   wrangler secret put TIGRIS_REGION
+  //   wrangler secret put TIGRIS_BUCKET
+  //   wrangler secret put TIGRIS_ACCESS_KEY_ID
+  //   wrangler secret put TIGRIS_SECRET_ACCESS_KEY
+  //
+  // NEXT_PUBLIC_* variables are inlined by Next.js at build time, so they must
+  // be present in the build environment (CI variables or the shell running
+  // `opennextjs-cloudflare build`) and mirrored here in `vars` for the worker.
+  "name": "pearls-crm",
+  "compatibility_date": "2026-08-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "main": ".open-next/worker.js",
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "vars": {
+    "NEXT_PUBLIC_SUPABASE_URL": "https://rhtfiiligsjdqgpnwoxp.supabase.co",
+    "NEXT_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJodGZpaWxpZ3NqZHFncG53b3hwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY5NTkxODIsImV4cCI6MjEwMjUzNTE4Mn0.c7ac1wKFMzXRfWWM6qdrNdl2kSMYQnsus0IRgAvmBM8",
+    "NEXT_PUBLIC_SITE_URL": "https://pearls-crm.pearlsasthetic.workers.dev"
+  },
+  "observability": {
+    "enabled": true
+  }
+}

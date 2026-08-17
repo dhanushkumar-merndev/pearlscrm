@@ -1,0 +1,62 @@
+diff --git a/dist/cli/build/bundle-server.js b/dist/cli/build/bundle-server.js
+index be3f893561dab6ad635e71a9cbb49603bfa44534..66b1e579514e944726265c410b7944cf81af6ef9 100644
+--- a/dist/cli/build/bundle-server.js
++++ b/dist/cli/build/bundle-server.js
+@@ -124,6 +124,15 @@ export async function bundleServer(buildOpts, projectOpts) {
+             // `@next/env` is used by Next to load environment variables from files.
+             // OpenNext inlines the values at build time so this is not needed.
+             "@next/env": path.join(buildOpts.outputDir, "cloudflare-templates/shims/env.js"),
++            // `sharp` is an optional Next.js dependency used only by the image
++            // optimizer, behind a lazy `require("sharp")` inside `getSharp()`
++            // in `next/dist/server/image-optimizer.js`. It resolves to a native
++            // `.node` binary that esbuild has no loader for and that could not
++            // run in workerd regardless. Aliasing it to the throwing shim (the
++            // same treatment `@vercel/og` gets above) keeps it out of the
++            // Worker bundle. Apps that set `images.unoptimized: true` never
++            // reach the call site; any app that does gets a clear error.
++            sharp: path.join(buildOpts.outputDir, "cloudflare-templates/shims/throw.js"),
+         },
+         define: {
+             // config file used by Next.js, see: https://github.com/vercel/next.js/blob/68a7128/packages/next/src/build/utils.ts#L2137-L2139
+diff --git a/dist/cli/build/patches/plugins/next-server.js b/dist/cli/build/patches/plugins/next-server.js
+index d816e838c1b2a23355161f0859ba9cd81f76d6d0..463f3e7c9355c5f75d1146a4ea92f34ece8cd513 100644
+--- a/dist/cli/build/patches/plugins/next-server.js
++++ b/dist/cli/build/patches/plugins/next-server.js
+@@ -28,12 +28,37 @@ export function patchNextServer(updater, buildOpts) {
+                 contents = patchCode(contents, createComposableCacheHandlersRule(composableCacheHandler));
+                 // Node middleware are not supported on Cloudflare yet
+                 contents = patchCode(contents, disableNodeMiddlewareRule);
++                contents = patchCode(contents, disableMiddlewareManifestRule);
+                 contents = patchCode(contents, attachRequestMetaRule);
+                 return contents;
+             },
+         },
+     ]);
+ }
++/**
++ * Next 16's `NextNodeServer.getMiddlewareManifest` does
++ * `require(this.middlewareManifestPath)` — a dynamic require workerd rejects
++ * at runtime with `Dynamic require of "/.next/server/middleware-manifest.json"
++ * is not supported`, which 500s every page.
++ *
++ * Returning `null` is what Next itself does in minimal mode. It is the correct
++ * answer under OpenNext regardless: middleware is bundled separately into
++ * `.open-next/middleware/handler.mjs` and invoked by the Worker entrypoint
++ * before the Next server ever runs, so the server must not try to run it again.
++ * `getMiddleware()` already handles a null manifest, and `loadNodeMiddleware`
++ * is stubbed out just above.
++ */
++export const disableMiddlewareManifestRule = `
++rule:
++  pattern:
++    selector: method_definition
++    context: "class { getMiddlewareManifest($$$PARAMS) { $$$_ } }"
++fix: |-
++  getMiddlewareManifest($$$PARAMS) {
++    // patched by open next: middleware runs in the Worker entrypoint
++    return null;
++  }
++`;
+ // Do not try to load Node middlewares
+ export const disableNodeMiddlewareRule = `
+ rule:

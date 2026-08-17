@@ -69,9 +69,13 @@ export function TypeOrCreateCombobox({
 
   const requestId = useRef(0);
 
-  useEffect(() => {
+  // Keep internal selection in sync with the parent's value. React's
+  // "adjust state during render" pattern: the setter is safe here because it
+  // runs during render of the component that owns the state, and it is
+  // idempotent (guarded by the id comparison).
+  if (selected?.id !== selectedValue?.id) {
     setSelected(selectedValue);
-  }, [selectedValue]);
+  }
 
   const runSearch = useCallback(
     async (term: string) => {

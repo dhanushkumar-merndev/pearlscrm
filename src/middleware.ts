@@ -2,10 +2,15 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
 /**
- * Proxy (the Next.js 16 successor to `middleware.ts`).
+ * Middleware (legacy `middleware.ts` convention, Edge runtime).
  *
- * Refreshes the Supabase session cookie and keeps unauthenticated traffic out
- * of the application shell.
+ * NOTE: `@opennextjs/cloudflare` does not yet support Next.js 16 `proxy.ts`
+ * (which is locked to the Node.js runtime). This file intentionally uses the
+ * deprecated `middleware.ts` convention so the Cloudflare build can run it as
+ * Edge middleware. Revert to `src/proxy.ts` once OpenNext supports it.
+ *
+ * It refreshes the Supabase session cookie and keeps unauthenticated traffic
+ * out of the application shell.
  *
  * This is a convenience redirect, not the authorization boundary — every page,
  * action and route handler re-checks the session server-side, and RLS enforces
@@ -14,9 +19,6 @@ import { createServerClient } from "@supabase/ssr";
 
 const PUBLIC_PATHS = [
   "/sign-in",
-  "/forgot-password",
-  "/reset-password",
-  "/auth/callback",
   "/auth/sign-out",
 ];
 
@@ -24,7 +26,7 @@ function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`));
 }
 
-export async function proxy(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(
@@ -55,16 +57,22 @@ export async function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
 
   if (!user && !isPublicPath(pathname)) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/sign-in";
-    url.search = "";
-    if (pathname !== "/") {
-      url.searchParams.set("next", `${pathname}${search}`);
+    // API routes must answer with JSON, never an HTML sign-in page: a `fetch`
+    // follows a redirect transparently, so the caller would see `ok: true` and
+    // an unparseable body instead of an auth failure. Fall through and let the
+    // route handler's own `requirePermission` return a 401 envelope.
+    if (!pathname.startsWith("/api/")) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/sign-in";
+      url.search = "";
+      if (pathname !== "/") {
+        url.searchParams.set("next", `${pathname}${search}`);
+      }
+      return NextResponse.redirect(url);
     }
-    return NextResponse.redirect(url);
   }
 
-  if (user && (pathname === "/sign-in" || pathname === "/forgot-password")) {
+  if (user && pathname === "/sign-in") {
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";
     url.search = "";
@@ -78,10 +86,10 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
+  /*
+   * Everything except Next.js internals and static assets.
+   */
   matcher: [
-    /*
-     * Everything except Next.js internals and static assets.
-     */
     "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };

@@ -32,7 +32,9 @@ export function SecureImage({
   eager?: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [visible, setVisible] = useState(eager);
+  const [visible, setVisible] = useState(
+    () => eager || typeof IntersectionObserver === "undefined",
+  );
   const [url, setUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
 
@@ -41,11 +43,6 @@ export function SecureImage({
 
     const element = containerRef.current;
     if (!element) return;
-
-    if (typeof IntersectionObserver === "undefined") {
-      setVisible(true);
-      return;
-    }
 
     const observer = new IntersectionObserver(
       (entries) => {

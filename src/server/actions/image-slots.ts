@@ -44,7 +44,13 @@ export async function getImageHistory(input: {
 
     const versions = await getImageVersionHistory(clinicalImageId);
 
-    return versions.map(({ object_key: _key, bucket: _bucket, ...rest }) => rest);
+    return versions.map((version) => {
+      const { object_key, bucket, ...rest } = version;
+      // The storage location is deliberately never sent to the client.
+      void object_key;
+      void bucket;
+      return rest;
+    });
   });
 }
 

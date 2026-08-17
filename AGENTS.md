@@ -1,8 +1,8 @@
-# AGENT.md — AURA Clinical Data Library
+# AGENT.md — Pearls Aesthetic Clinic Library
 
 ## 0. Agent Assignment
 
-You are the senior full-stack engineer responsible for building the **AURA Clinical Data Library** as a production-grade web application.
+You are the senior full-stack engineer responsible for building the **Pearls Aesthetic Clinic Library** as a production-grade web application.
 
 This is **not** a prototype, UI mock, static dashboard, or demo. Build the real application end-to-end with authentication, authorization, database schema, private clinical image storage, auditability, validation, robust error handling, responsive UI, and production deployment readiness.
 
@@ -2977,3 +2977,5 @@ No R2.
 No additional UI framework.
 
 Build the application according to this document unless an explicit later instruction changes a requirement.
+
+

@@ -35,23 +35,6 @@ export const signInSchema = z.object({
   password: z.string().min(1, "Enter your password"),
 });
 
-export const forgotPasswordSchema = z.object({
-  email: z.string().trim().toLowerCase().email("Enter a valid email address"),
-});
-
-export const resetPasswordSchema = z
-  .object({
-    password: z
-      .string()
-      .min(12, "Use at least 12 characters")
-      .max(128, "Use 128 characters or fewer"),
-    confirmPassword: z.string(),
-  })
-  .refine((value) => value.password === value.confirmPassword, {
-    message: "Passwords do not match",
-    path: ["confirmPassword"],
-  });
-
 // --- Master data -------------------------------------------------------------
 
 export const masterTableSchema = z.enum(MASTER_TABLES);
@@ -268,12 +251,16 @@ export const updateReviewSchema = z.object({
 
 // --- Users -------------------------------------------------------------------
 
-export const inviteUserSchema = z.object({
+export const createUserSchema = z.object({
   email: z.string().trim().toLowerCase().email("Enter a valid email address"),
   displayName: z
     .string()
     .transform((value) => value.replace(/\s+/g, " ").trim())
     .pipe(z.string().min(1, "Enter a name").max(120)),
+  password: z
+    .string()
+    .min(12, "Use at least 12 characters")
+    .max(128, "Use 128 characters or fewer"),
   roleCode: z.enum(["ADMIN", "SURGEON", "STAFF", "VIEWER"]),
 });
 

@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { AppError, notFound, validationFailed } from "@/lib/errors";
-import { inviteUserSchema, updateUserSchema } from "@/lib/validation/schemas";
+import { createUserSchema, updateUserSchema } from "@/lib/validation/schemas";
 import type { ActionInput } from "@/lib/validation/action-input";
 import { requirePermission } from "@/server/auth/session";
 import { recordAudit } from "@/server/services/audit";
@@ -16,41 +16,41 @@ import type { ProfileWithRole, RoleCode } from "@/lib/types";
  * User administration.
  *
  * There is no public sign-up anywhere in the application: accounts exist only
- * because an administrator invited them. Supabase Auth admin APIs are called
+ * because an administrator created them, and the administrator sets each
+ * account's initial password at creation time (there is no self-service
+ * password reset or email invitation flow). Supabase Auth admin APIs are called
  * exclusively from here, server-side, behind an ADMIN permission check.
  */
 
-export async function inviteUser(
-  input: ActionInput<typeof inviteUserSchema>,
+export async function createUser(
+  input: ActionInput<typeof createUserSchema>,
 ): Promise<ActionResult<{ userId: string }>> {
   return actionResult(async () => {
     const actor = await requirePermission("user:manage");
-    const data = inviteUserSchema.parse(input);
+    const data = createUserSchema.parse(input);
 
     const admin = createSupabaseAdminClient();
     const roleId = await roleIdForCode(data.roleCode);
 
-    const redirectTo = process.env.NEXT_PUBLIC_SITE_URL
-      ? `${process.env.NEXT_PUBLIC_SITE_URL}/reset-password`
-      : undefined;
-
-    const { data: invited, error } = await admin.auth.admin.inviteUserByEmail(data.email, {
-      ...(redirectTo ? { redirectTo } : {}),
+    const { data: created, error } = await admin.auth.admin.createUser({
+      email: data.email,
+      password: data.password,
+      email_confirm: true,
       data: { display_name: data.displayName },
     });
 
-    if (error || !invited.user) {
+    if (error || !created.user) {
       if (error?.message?.toLowerCase().includes("already been registered")) {
         throw validationFailed("An account already exists for that email address.", {
           email: ["This email address is already registered."],
         });
       }
-      throw new AppError("INTERNAL", "The invitation could not be sent.");
+      throw new AppError("INTERNAL", "The account could not be created.");
     }
 
     const { error: profileError } = await admin.from("profiles").upsert(
       {
-        id: invited.user.id,
+        id: created.user.id,
         display_name: data.displayName,
         role_id: roleId,
         is_active: true,
@@ -64,14 +64,14 @@ export async function inviteUser(
       actorUserId: actor.id,
       action: "USER_CREATED",
       entityType: "profile",
-      entityId: invited.user.id,
-      // The invited address is the identifier here and is not clinical data.
+      entityId: created.user.id,
+      // The address is the identifier here and is not clinical data.
       metadata: { role: data.roleCode, display_name: data.displayName },
     });
 
     revalidatePath("/users");
 
-    return { userId: invited.user.id };
+    return { userId: created.user.id };
   });
 }
 

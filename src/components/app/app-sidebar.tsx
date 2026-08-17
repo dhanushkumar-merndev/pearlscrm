@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -7,7 +8,6 @@ import {
   LayoutDashboard,
   ScrollText,
   Settings,
-  Stethoscope,
   Users,
 } from "lucide-react";
 
@@ -56,13 +56,20 @@ export function AppSidebar({ role }: { role: RoleCode }) {
           <SidebarMenuItem>
             <SidebarMenuButton asChild size="lg">
               <Link href="/dashboard">
-                <div className="bg-primary text-primary-foreground flex aspect-square size-8 items-center justify-center rounded-md">
-                  <Stethoscope className="size-4" aria-hidden />
-                </div>
+                <Image
+                  src="/logo.png"
+                  alt="Pearls Aesthetic Clinic logo"
+                  width={112}
+                  height={44}
+                  className="h-11 w-auto shrink-0 object-contain"
+                  priority
+                />
                 <div className="grid flex-1 text-left leading-tight">
-                  <span className="truncate font-semibold">AURA</span>
+                  <span className="truncate font-serif text-base font-semibold">
+                    Pearls Aesthetic
+                  </span>
                   <span className="text-muted-foreground truncate text-xs">
-                    Clinical Data Library
+                    Clinic Library
                   </span>
                 </div>
               </Link>

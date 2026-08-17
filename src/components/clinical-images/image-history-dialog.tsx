@@ -36,12 +36,19 @@ export function ImageHistoryDialog({
   const [entries, setEntries] = useState<ImageHistoryEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const handleOpenChange = (next: boolean) => {
+    onOpenChange(next);
+    if (next) {
+      // Reset before a fresh fetch instead of doing it inside the effect.
+      setEntries(null);
+      setError(null);
+    }
+  };
+
   useEffect(() => {
     if (!open) return;
 
     let cancelled = false;
-    setEntries(null);
-    setError(null);
 
     void getImageHistory({ clinicalImageId }).then((result) => {
       if (cancelled) return;
@@ -55,7 +62,7 @@ export function ImageHistoryDialog({
   }, [open, clinicalImageId]);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{viewName} — version history</DialogTitle>

@@ -51,33 +51,37 @@ export function FollowupDialog({
   const [labelEdited, setLabelEdited] = useState(false);
   const [suggesting, setSuggesting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [dateError, setDateError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!open) return;
+  // Derived during render — the HTML date input already prevents a date before
+  // surgery via `min`, but the server action also rejects it, so validate here.
+  const dateError =
+    visitDate !== "" && visitDate < surgeryDate
+      ? "The visit date is before the surgery date."
+      : null;
 
-    setVisitDate(visit?.visit_date ?? "");
-    setLabel(visit?.display_label ?? "");
-    setObservation(visit?.clinical_observation ?? "");
-    setLabelEdited(Boolean(visit));
-    setError(null);
-    setDateError(null);
-  }, [open, visit]);
-
-  useEffect(() => {
-    if (!open || !visitDate) return;
-
-    if (visitDate < surgeryDate) {
-      setDateError("The visit date is before the surgery date.");
-      return;
+  const handleOpenChange = (next: boolean) => {
+    onOpenChange(next);
+    if (next) {
+      // Reset the form for the visit being edited instead of doing it inside
+      // an effect while the dialog is closing/opening.
+      setVisitDate(visit?.visit_date ?? "");
+      setLabel(visit?.display_label ?? "");
+      setObservation(visit?.clinical_observation ?? "");
+      setLabelEdited(Boolean(visit));
+      setError(null);
     }
+  };
 
-    setDateError(null);
+  useEffect(() => {
+    if (!open || !visitDate || dateError) return;
 
     // Only suggest while the user has not taken over the label themselves.
     if (labelEdited) return;
 
     let cancelled = false;
+    // Loading flag while the suggestion request is in flight; cleared in the
+    // async completion callback, never synchronously after the first tick.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSuggesting(true);
 
     void suggestVisitLabel({ caseId, visitDate }).then((result) => {
@@ -89,7 +93,7 @@ export function FollowupDialog({
     return () => {
       cancelled = true;
     };
-  }, [open, visitDate, surgeryDate, labelEdited, caseId]);
+  }, [open, visitDate, surgeryDate, labelEdited, caseId, dateError]);
 
   const submit = () => {
     setError(null);
@@ -123,7 +127,7 @@ export function FollowupDialog({
   const valid = visitDate !== "" && label.trim() !== "" && !dateError;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{visit ? "Edit follow-up" : "Add follow-up"}</DialogTitle>

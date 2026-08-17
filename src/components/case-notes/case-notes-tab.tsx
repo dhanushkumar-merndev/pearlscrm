@@ -130,6 +130,7 @@ export function CaseNotesTab({ detail, role }: { detail: CaseDetail; role: RoleC
     });
   });
 
+  // eslint-disable-next-line react-hooks/incompatible-library -- RHF watch() cannot be memoized; skipping memoization of this form is intentional and safe.
   const complicationsPresent = form.watch("complicationsPresent");
 
   return (

@@ -54,6 +54,9 @@ export function VisitImagesPanel({
   }, [visit.id]);
 
   useEffect(() => {
+    // Fetch-on-mount for the visit's slot grid. All state updates happen
+    // inside the awaited `load`, never synchronously in this effect body.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
   }, [load]);
 

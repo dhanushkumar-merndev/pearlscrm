@@ -2,7 +2,6 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { z } from "zod";
@@ -79,15 +78,7 @@ export function SignInForm({ next }: { next: string }) {
             </Field>
 
             <Field data-invalid={Boolean(form.formState.errors.password)}>
-              <div className="flex items-center justify-between">
-                <FieldLabel htmlFor="password">Password</FieldLabel>
-                <Link
-                  href="/forgot-password"
-                  className="text-muted-foreground hover:text-foreground text-sm underline underline-offset-4"
-                >
-                  Forgot password?
-                </Link>
-              </div>
+              <FieldLabel htmlFor="password">Password</FieldLabel>
               <Input
                 id="password"
                 type="password"

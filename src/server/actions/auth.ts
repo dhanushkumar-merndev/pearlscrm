@@ -1,15 +1,10 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { headers } from "next/headers";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { AppError } from "@/lib/errors";
-import {
-  forgotPasswordSchema,
-  resetPasswordSchema,
-  signInSchema,
-} from "@/lib/validation/schemas";
+import { signInSchema } from "@/lib/validation/schemas";
 import type { ActionInput } from "@/lib/validation/action-input";
 import { actionResult, type ActionResult } from "@/server/actions/result";
 
@@ -17,7 +12,9 @@ import { actionResult, type ActionResult } from "@/server/actions/result";
  * Authentication actions.
  *
  * There is no sign-up action anywhere in this application by design — accounts
- * are created by administrators only (see `server/actions/users`).
+ * are created by administrators only (see `server/actions/users`), and there
+ * is no self-service password reset: an administrator sets each account's
+ * password when the account is created.
  */
 
 export async function signIn(
@@ -64,63 +61,8 @@ export async function signIn(
   });
 }
 
-export async function requestPasswordReset(
-  input: ActionInput<typeof forgotPasswordSchema>,
-): Promise<ActionResult<{ sent: true }>> {
-  return actionResult(async () => {
-    const data = forgotPasswordSchema.parse(input);
-    const supabase = await createSupabaseServerClient();
-
-    const origin = await siteOrigin();
-
-    await supabase.auth.resetPasswordForEmail(data.email, {
-      redirectTo: `${origin}/auth/callback?next=/reset-password`,
-    });
-
-    // Always reports success: whether an address is registered is not something
-    // an unauthenticated caller should be able to discover.
-    return { sent: true as const };
-  });
-}
-
-export async function completePasswordReset(
-  input: ActionInput<typeof resetPasswordSchema>,
-): Promise<ActionResult<{ updated: true }>> {
-  return actionResult(async () => {
-    const data = resetPasswordSchema.parse(input);
-    const supabase = await createSupabaseServerClient();
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      throw new AppError(
-        "UNAUTHENTICATED",
-        "This password reset link has expired. Request a new one.",
-      );
-    }
-
-    const { error } = await supabase.auth.updateUser({ password: data.password });
-
-    if (error) throw new AppError("VALIDATION", "That password could not be set. Try another.");
-
-    return { updated: true as const };
-  });
-}
-
 export async function signOut(): Promise<void> {
   const supabase = await createSupabaseServerClient();
   await supabase.auth.signOut();
   redirect("/sign-in");
-}
-
-async function siteOrigin(): Promise<string> {
-  if (process.env.NEXT_PUBLIC_SITE_URL) return process.env.NEXT_PUBLIC_SITE_URL;
-
-  const headerList = await headers();
-  const host = headerList.get("x-forwarded-host") ?? headerList.get("host") ?? "localhost:3000";
-  const protocol = headerList.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
-
-  return `${protocol}://${host}`;
 }
