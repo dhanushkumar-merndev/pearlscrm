@@ -36,7 +36,7 @@ export async function createUser(
       email: data.email,
       password: data.password,
       email_confirm: true,
-      data: { display_name: data.displayName },
+      user_metadata: { display_name: data.displayName },
     });
 
     if (error || !created.user) {

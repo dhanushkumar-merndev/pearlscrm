@@ -57,11 +57,11 @@ export function AppSidebar({ role }: { role: RoleCode }) {
             <SidebarMenuButton asChild size="lg">
               <Link href="/dashboard">
                 <Image
-                  src="/logo.png"
+                  src="/icon-512.png"
                   alt="Pearls Aesthetic Clinic logo"
-                  width={112}
+                  width={44}
                   height={44}
-                  className="h-11 w-auto shrink-0 object-contain"
+                  className="h-11 w-11 shrink-0 rounded-full object-contain"
                   priority
                 />
                 <div className="grid flex-1 text-left leading-tight">
@@ -82,7 +82,7 @@ export function AppSidebar({ role }: { role: RoleCode }) {
         <SidebarGroup>
           <SidebarGroupLabel>Clinical</SidebarGroupLabel>
           <SidebarGroupContent>
-            <SidebarMenu>
+            <SidebarMenu className="gap-1">
               {CLINICAL_NAV.map((item) => (
                 <NavLink key={item.href} item={item} pathname={pathname} />
               ))}
@@ -91,10 +91,10 @@ export function AppSidebar({ role }: { role: RoleCode }) {
         </SidebarGroup>
 
         {adminItems.length > 0 ? (
-          <SidebarGroup>
+          <SidebarGroup className="mt-6">
             <SidebarGroupLabel>Administration</SidebarGroupLabel>
             <SidebarGroupContent>
-              <SidebarMenu>
+              <SidebarMenu className="gap-1">
                 {adminItems.map((item) => (
                   <NavLink key={item.href} item={item} pathname={pathname} />
                 ))}

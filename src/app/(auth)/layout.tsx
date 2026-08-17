@@ -6,11 +6,11 @@ export default function AuthLayout({ children }: LayoutProps<"/">) {
       <div className="flex w-full max-w-sm flex-col gap-6">
         <div className="flex flex-col items-center gap-3 text-center">
           <Image
-            src="/logo.png"
+            src="/icon-512.png"
             alt="Pearls Aesthetic Clinic logo"
-            width={180}
-            height={72}
-            className="h-16 w-auto object-contain"
+            width={64}
+            height={64}
+            className="h-16 w-16 rounded-full object-contain"
             priority
           />
           <div>
