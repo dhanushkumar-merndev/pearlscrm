@@ -3,7 +3,6 @@ import { redirect } from "next/navigation";
 import { AppSidebar } from "@/components/app/app-sidebar";
 import { NotificationBell } from "@/components/app/notification-bell";
 import { UserMenu } from "@/components/app/user-menu";
-import { Separator } from "@/components/ui/separator";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { getSessionUser } from "@/server/auth/session";
 
@@ -39,7 +38,6 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
       <SidebarInset>
         <header className="bg-background sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b px-4">
           <SidebarTrigger className="-ml-1" />
-          <Separator orientation="vertical" className="mr-2 h-4" />
           <div className="flex-1" />
           <NotificationBell userId={user.id} />
           <UserMenu displayName={user.displayName} email={user.email} role={user.role} />

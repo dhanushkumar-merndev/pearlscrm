@@ -9,7 +9,7 @@ import type { ActionInput } from "@/lib/validation/action-input";
 import { requireUser } from "@/server/auth/session";
 import {
   countUnreadNotifications,
-  listNotifications as queryNotifications,
+  listUnreadNotifications,
 } from "@/server/queries/notifications";
 import { actionResult, type ActionResult } from "@/server/actions/result";
 import type { AppNotification } from "@/lib/types";
@@ -31,7 +31,7 @@ export async function getNotificationFeed(): Promise<ActionResult<NotificationFe
     await requireUser();
 
     const [notifications, unread] = await Promise.all([
-      queryNotifications(30),
+      listUnreadNotifications(),
       countUnreadNotifications(),
     ]);
 

@@ -38,10 +38,15 @@ export type CaseListResult = {
   pageCount: number;
 };
 
-export async function listCases(query: CaseListQuery): Promise<CaseListResult> {
+export async function listCases(
+  query: CaseListQuery,
+  options: { includeCreator?: boolean } = {},
+): Promise<CaseListResult> {
   const supabase = await createSupabaseServerClient();
 
-  let request = supabase.from("case_list_view").select("*", { count: "exact" });
+  let request = supabase
+    .from(options.includeCreator ? "case_admin_list_view" : "case_list_view")
+    .select("*", { count: "exact" });
 
   if (query.status === "any") {
     // "Any" still means "not archived" — archived cases have their own filter.
@@ -82,13 +87,11 @@ export async function listCases(query: CaseListQuery): Promise<CaseListResult> {
   if (query.completion === "complete") request = request.eq("status", "COMPLETED");
   if (query.completion === "incomplete") request = request.neq("status", "COMPLETED");
 
-  if (query.tagId) {
-    const caseIds = await caseIdsForTag(query.tagId);
-    if (caseIds.length === 0) {
-      return { rows: [], total: 0, page: query.page, pageSize: query.pageSize, pageCount: 0 };
-    }
-    request = request.in("id", caseIds);
-  }
+  // Containment test against the view's `tag_ids` array — one small filter,
+  // evaluated in PostgreSQL. The previous version round-tripped every matching
+  // case id through the application and back in the URL, which truncated at
+  // 5000 and exceeded the request-line limit at roughly 300 tagged cases.
+  if (query.tagId) request = request.contains("tag_ids", [query.tagId]);
 
   const from = (query.page - 1) * query.pageSize;
 
@@ -109,19 +112,6 @@ export async function listCases(query: CaseListQuery): Promise<CaseListResult> {
     pageSize: query.pageSize,
     pageCount: Math.max(1, Math.ceil(total / query.pageSize)),
   };
-}
-
-async function caseIdsForTag(tagId: string): Promise<string[]> {
-  const supabase = await createSupabaseServerClient();
-
-  const { data } = await supabase
-    .from("case_tags")
-    .select("case_id")
-    .eq("tag_id", tagId)
-    .limit(5000)
-    .returns<{ case_id: string }[]>();
-
-  return (data ?? []).map((row) => row.case_id);
 }
 
 export type CaseDetail = {

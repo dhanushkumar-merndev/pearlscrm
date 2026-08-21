@@ -44,7 +44,7 @@ export default async function CasesPage({ searchParams }: PageProps<"/cases">) {
       </Suspense>
 
       <Suspense key={JSON.stringify(params)} fallback={<TableSkeleton />}>
-        <Results searchParams={params} />
+        <Results searchParams={params} showCreator={user.role === "ADMIN"} />
       </Suspense>
     </>
   );
@@ -62,16 +62,18 @@ async function Filters() {
 
 async function Results({
   searchParams,
+  showCreator,
 }: {
   searchParams: Record<string, string | string[] | undefined>;
+  showCreator: boolean;
 }) {
   // Unparseable filters fall back to defaults rather than erroring the page.
   const parsed = caseListQuerySchema.safeParse(flatten(searchParams));
   const query = parsed.success ? parsed.data : caseListQuerySchema.parse({});
 
-  const result = await listCases(query);
+  const result = await listCases(query, { includeCreator: showCreator });
 
-  return <CasesTable result={result} query={query} />;
+  return <CasesTable result={result} query={query} showCreator={showCreator} />;
 }
 
 function flatten(params: Record<string, string | string[] | undefined>) {

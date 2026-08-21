@@ -5,8 +5,6 @@ import { useRouter } from "next/navigation";
 import { Controller, useFieldArray, useForm, type UseFormReturn } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
-  ArrowDown,
-  ArrowUp,
   GripVertical,
   Plus,
   Save,
@@ -73,6 +71,7 @@ export function CaseNotesTab({
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [requesting, setRequesting] = useState(false);
+  const [draggingChangeId, setDraggingChangeId] = useState<string | null>(null);
 
   const notes = detail.notes;
   const editable =
@@ -264,7 +263,8 @@ export function CaseNotesTab({
         <CardHeader>
           <CardTitle>Changes performed</CardTitle>
           <CardDescription>
-            An ordered list. Add, remove and reorder entries — the order is stored.
+            An ordered list. Drag a row to reorder it; changes stay on this device until you save
+            the notes.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -274,14 +274,50 @@ export function CaseNotesTab({
 
           <ol className="space-y-2">
             {changes.fields.map((field, index) => (
-              <li key={field.id} className="flex items-start gap-2">
-                <span
-                  className="text-muted-foreground mt-2.5 flex w-6 shrink-0 items-center gap-1 text-sm tabular-nums"
-                  aria-hidden
-                >
-                  <GripVertical className="size-3" />
-                  {index + 1}
-                </span>
+              <li
+                key={field.id}
+                className={
+                  draggingChangeId === field.id
+                    ? "bg-muted/50 flex items-start gap-2 rounded-md"
+                    : "flex items-start gap-2"
+                }
+                onDragOver={editable ? (event) => event.preventDefault() : undefined}
+                onDrop={
+                  editable
+                    ? (event) => {
+                        event.preventDefault();
+                        const sourceId = event.dataTransfer.getData("text/plain") || draggingChangeId;
+                        const sourceIndex = changes.fields.findIndex((change) => change.id === sourceId);
+                        if (sourceIndex >= 0 && sourceIndex !== index) changes.move(sourceIndex, index);
+                        setDraggingChangeId(null);
+                      }
+                    : undefined
+                }
+              >
+                {editable ? (
+                  <button
+                    type="button"
+                    draggable
+                    title="Drag to reorder"
+                    aria-label={`Drag change ${index + 1} to reorder`}
+                    className="text-muted-foreground mt-1.5 flex w-7 shrink-0 cursor-grab items-center justify-center rounded-sm py-1 active:cursor-grabbing focus-visible:ring-2 focus-visible:outline-none"
+                    onDragStart={(event) => {
+                      event.dataTransfer.effectAllowed = "move";
+                      event.dataTransfer.setData("text/plain", field.id);
+                      setDraggingChangeId(field.id);
+                    }}
+                    onDragEnd={() => setDraggingChangeId(null)}
+                  >
+                    <GripVertical className="size-4" aria-hidden />
+                  </button>
+                ) : (
+                  <span
+                    className="text-muted-foreground mt-2.5 flex w-7 shrink-0 items-center justify-center text-sm tabular-nums"
+                    aria-hidden
+                  >
+                    {index + 1}
+                  </span>
+                )}
 
                 <div className="flex-1 space-y-1">
                   <Input
@@ -297,28 +333,6 @@ export function CaseNotesTab({
 
                 {editable ? (
                   <div className="flex gap-1">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="size-9"
-                      disabled={index === 0}
-                      onClick={() => changes.move(index, index - 1)}
-                      aria-label={`Move change ${index + 1} up`}
-                    >
-                      <ArrowUp aria-hidden />
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="size-9"
-                      disabled={index === changes.fields.length - 1}
-                      onClick={() => changes.move(index, index + 1)}
-                      aria-label={`Move change ${index + 1} down`}
-                    >
-                      <ArrowDown aria-hidden />
-                    </Button>
                     <Button
                       type="button"
                       variant="ghost"

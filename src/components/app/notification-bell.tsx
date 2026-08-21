@@ -1,23 +1,20 @@
 "use client";
 
 import { useCallback, useEffect, useState, useTransition } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Bell, CheckCheck, Inbox } from "lucide-react";
+import { Bell, CheckCheck } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { NotificationList } from "@/components/notifications/notification-list";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useRealtime } from "@/hooks/use-realtime";
-import { formatTimestamp } from "@/lib/dates";
-import { cn } from "@/lib/utils";
 import {
   getNotificationFeed,
   markAllNotificationsRead,
-  markNotificationRead,
 } from "@/server/actions/notifications";
 import type { AppNotification } from "@/lib/types";
 
@@ -80,10 +77,6 @@ export function NotificationBell({ userId }: { userId: string }) {
 
     if (!notification.read_at) {
       setUnread((count) => Math.max(0, count - 1));
-      startTransition(async () => {
-        await markNotificationRead({ notificationId: notification.id });
-        await load();
-      });
     }
   };
 
@@ -139,55 +132,22 @@ export function NotificationBell({ userId }: { userId: string }) {
             <Skeleton className="h-12 w-full" />
             <Skeleton className="h-12 w-full" />
           </div>
-        ) : notifications.length === 0 ? (
-          <div className="text-muted-foreground flex flex-col items-center gap-2 p-8 text-center">
-            <Inbox className="size-6" aria-hidden />
-            <p className="text-sm">No notifications yet.</p>
-          </div>
         ) : (
           <ScrollArea className="h-96">
-            <ul className="divide-y">
-              {notifications.map((notification) => {
-                const href = notification.case_id ? `/cases/${notification.case_id}` : "/approvals";
-
-                return (
-                  <li key={notification.id}>
-                    <Link
-                      href={href}
-                      onClick={() => openNotification(notification)}
-                      className={cn(
-                        "hover:bg-muted/60 focus-visible:ring-ring block px-3 py-2.5 transition-colors focus-visible:ring-2 focus-visible:outline-none",
-                        !notification.read_at && "bg-primary/5",
-                      )}
-                    >
-                      <div className="flex items-start gap-2">
-                        <span
-                          className={cn(
-                            "mt-1.5 size-1.5 shrink-0 rounded-full",
-                            notification.read_at ? "bg-transparent" : "bg-primary",
-                          )}
-                          aria-hidden
-                        />
-                        <div className="min-w-0 space-y-0.5">
-                          <p className="text-sm leading-snug font-medium">{notification.title}</p>
-                          {notification.body ? (
-                            <p className="text-muted-foreground text-xs leading-snug">
-                              {notification.body}
-                            </p>
-                          ) : null}
-                          <p className="text-muted-foreground text-xs tabular-nums">
-                            {formatTimestamp(notification.created_at)}
-                            {notification.read_at ? "" : " · Unread"}
-                          </p>
-                        </div>
-                      </div>
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
+            <NotificationList
+              notifications={notifications}
+              emptyMessage="No unread notifications."
+              onNotificationOpened={openNotification}
+            />
           </ScrollArea>
         )}
+
+        <Separator />
+        <div className="p-2">
+          <Button asChild variant="ghost" size="sm" className="w-full justify-start">
+            <a href="/notifications">View all notifications</a>
+          </Button>
+        </div>
       </PopoverContent>
     </Popover>
   );

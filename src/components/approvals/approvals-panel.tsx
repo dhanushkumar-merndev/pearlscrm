@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ShieldCheck } from "lucide-react";
 
 import { EditRequestBadge } from "@/components/app/status-badges";
+import { ChangesTable } from "@/components/approvals/changes-table";
 import { DecideRequestDialog } from "@/components/approvals/decide-request-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,6 +21,7 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatTimestamp } from "@/lib/dates";
+import type { ChangePage } from "@/server/queries/changes";
 import type { EditRequestPage } from "@/server/queries/notifications";
 import type { CaseEditRequestRow } from "@/lib/types";
 
@@ -41,9 +43,11 @@ export function describeScope(request: CaseEditRequestRow): string {
 export function ApprovalsPanel({
   pending,
   decided,
+  changes,
 }: {
   pending: EditRequestPage;
   decided: EditRequestPage;
+  changes: ChangePage;
 }) {
   const [target, setTarget] = useState<CaseEditRequestRow | null>(null);
 
@@ -71,6 +75,12 @@ export function ApprovalsPanel({
             ) : null}
           </TabsTrigger>
           <TabsTrigger value="decided">Decided</TabsTrigger>
+          <TabsTrigger value="changes">
+            Changes
+            {changes.total > 0 ? (
+              <span className="text-muted-foreground ml-1 tabular-nums">({changes.total})</span>
+            ) : null}
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="pending">
@@ -119,6 +129,23 @@ export function ApprovalsPanel({
               </CardContent>
             </Card>
           )}
+        </TabsContent>
+        <TabsContent value="changes">
+          <Card>
+            <CardHeader>
+              <CardTitle>What changed</CardTitle>
+              <CardDescription>
+                Field-level edits across every case, newest first — who changed it and the value
+                before and after. Long clinical text is recorded as its length, never its content.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ChangesTable
+                result={changes}
+                onPage={(page) => goToPage("changesPage", page)}
+              />
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
 

@@ -137,7 +137,7 @@ export function FollowupsTab({
         </Empty>
       ) : (
         <Tabs defaultValue={sorted[0].id} className="gap-4">
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto overflow-y-hidden">
             <TabsList>
               {sorted.map((visit) => (
                 <TabsTrigger key={visit.id} value={visit.id}>

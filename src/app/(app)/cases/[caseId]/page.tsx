@@ -26,9 +26,26 @@ export async function generateMetadata({
   }
 }
 
-export default async function CaseDetailPage({ params }: PageProps<"/cases/[caseId]">) {
+const CASE_TAB_VALUES = new Set([
+  "overview",
+  "before",
+  "after",
+  "followups",
+  "notes",
+  "consent",
+  "review",
+  "audit",
+]);
+
+export default async function CaseDetailPage({
+  params,
+  searchParams,
+}: PageProps<"/cases/[caseId]">) {
   const user = await requireUser();
   const { caseId } = await params;
+  const query = await searchParams;
+  const requestedTab = Array.isArray(query.tab) ? query.tab[0] : query.tab;
+  const initialTab = requestedTab && CASE_TAB_VALUES.has(requestedTab) ? requestedTab : "overview";
 
   let detail;
   try {
@@ -66,6 +83,7 @@ export default async function CaseDetailPage({ params }: PageProps<"/cases/[case
         role={user.role}
         currentUserId={user.id}
         notesEditAccess={notesEditAccess}
+        initialTab={initialTab}
         // Read server-side so the client validates against the real configured
         // limit rather than a duplicated constant.
         maxImageBytes={serverEnv().MAX_IMAGE_BYTES}

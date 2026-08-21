@@ -117,6 +117,8 @@ export type CaseListRow = {
   created_at: string;
   updated_at: string;
   created_by: string | null;
+  /** Present only in the administrator-only case list view. */
+  creator_name?: string | null;
   version: number;
   latest_followup_date: string | null;
   latest_followup_label: string | null;
@@ -130,6 +132,8 @@ export type CaseListRow = {
   after_uploaded_count: number | null;
   after_not_available_count: number | null;
   standard_view_count: number;
+  /** Tag ids on the case, so the list can filter by tag inside PostgreSQL. */
+  tag_ids: string[];
 };
 
 export type CaseVisit = {
@@ -309,6 +313,10 @@ export type AppNotification = {
   case_number: string | null;
   visit_id: string | null;
   edit_request_id: string | null;
+  /** Context joined at read time; it is not duplicated into the notification row. */
+  edit_scope?: EditScope | null;
+  /** Lets the notification open the exact related case tab. */
+  visit_type?: VisitType | null;
   actor_id: string | null;
   read_at: string | null;
   created_at: string;

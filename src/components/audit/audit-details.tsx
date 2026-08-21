@@ -30,10 +30,11 @@ export function AuditDetails({ metadata }: { metadata: Record<string, unknown> }
   }
 
   return (
-    // One row per event: the badges stay on a single line and the table's own
-    // horizontal scroll handles a long set, rather than the cell growing tall
-    // and breaking the row rhythm of the log.
-    <div className="flex flex-nowrap items-center gap-1.5">
+    // Badges sit on one row while they fit the width the column is given, and
+    // wrap onto a second row only when they genuinely do not. Forcing a single
+    // line just trades a tall row for a horizontally scrolling table, which is
+    // worse: the far-right details end up off screen entirely.
+    <div className="flex flex-wrap items-center gap-1.5">
       {entries.map(([key, value]) => {
         const rendered = renderValue(key, value);
         if (rendered === null) return null;

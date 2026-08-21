@@ -102,6 +102,28 @@ export async function updateReview(
         // The assessment text itself stays out of the audit log.
         assessment_changed: existing.final_assessment !== updated.final_assessment,
         edited_after_completion: wasCompleted && isCompleting,
+        // Recorded in the same `{ field: { from, to } }` shape the rest of the
+        // log uses, so review edits show up on the Changes screen alongside
+        // everything else. The assessment is described by length, never quoted.
+        changed_fields: [
+          ...(existing.status !== updated.status ? ["status"] : []),
+          ...(existing.final_assessment !== updated.final_assessment
+            ? ["final_assessment"]
+            : []),
+        ],
+        changes: {
+          ...(existing.status !== updated.status
+            ? { status: { from: existing.status, to: updated.status } }
+            : {}),
+          ...(existing.final_assessment !== updated.final_assessment
+            ? {
+                final_assessment: {
+                  from: describeLength(existing.final_assessment),
+                  to: describeLength(updated.final_assessment),
+                },
+              }
+            : {}),
+        },
       },
     });
 
@@ -111,4 +133,10 @@ export async function updateReview(
 
     return { status: updated.status, version: updated.version, reviewedAt: updated.reviewed_at };
   });
+}
+
+/** Describes clinical narrative by size so the log never quotes it. */
+function describeLength(value: string | null): string {
+  if (!value) return "empty";
+  return `[${value.length} characters]`;
 }

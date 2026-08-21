@@ -38,7 +38,16 @@ const SORTABLE = {
   created_at: "Created",
 } as const;
 
-export function CasesTable({ result, query }: { result: CaseListResult; query: CaseListQuery }) {
+export function CasesTable({
+  result,
+  query,
+  showCreator,
+}: {
+  result: CaseListResult;
+  query: CaseListQuery;
+  /** Creator identity is an administrator-only operational field. */
+  showCreator: boolean;
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -97,6 +106,7 @@ export function CasesTable({ result, query }: { result: CaseListResult; query: C
               />
               <TableHead className="hidden xl:table-cell">Consent</TableHead>
               <TableHead className="hidden xl:table-cell">Before images</TableHead>
+              {showCreator ? <TableHead>Created by</TableHead> : null}
               <TableHead>Expert review</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="text-right">Actions</TableHead>
@@ -151,6 +161,8 @@ export function CasesTable({ result, query }: { result: CaseListResult; query: C
                     total={row.standard_view_count}
                   />
                 </TableCell>
+
+                {showCreator ? <TableCell>{row.creator_name ?? "Not recorded"}</TableCell> : null}
 
                 <TableCell>
                   <ReviewBadge status={row.review_status} />

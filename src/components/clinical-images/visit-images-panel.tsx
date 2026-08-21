@@ -30,6 +30,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { useRealtime } from "@/hooks/use-realtime";
+import { getCached, invalidateCached, setCached } from "@/lib/client-cache";
 import { formatClinicDate, formatTimestamp } from "@/lib/dates";
 import { formatBytes } from "@/lib/images";
 import { can } from "@/lib/permissions";
@@ -39,6 +40,9 @@ import { clearSlotUnavailable, markSlotUnavailable, removeSlotImage } from "@/se
 import { getEditAccess } from "@/server/actions/edit-requests";
 import { submitVisitImages } from "@/server/actions/visits";
 import type { CaseVisit, EditAccess, ImageSlot, ImageViewType, RoleCode } from "@/lib/types";
+
+/** Three concurrent direct uploads are fast without saturating clinic networks. */
+const MAX_CONCURRENT_IMAGE_SAVES = 3;
 
 /**
  * The standard clinical view grid for one visit, as an editable set.
@@ -90,8 +94,28 @@ export function VisitImagesPanel({
   const mayMark = !readOnly && can(role, "image:mark_unavailable");
   const mayRequest = !readOnly && can(role, "edit_request:create");
 
-  const load = useCallback(async () => {
+  const cacheKey = `visit:${visit.id}`;
+
+  /**
+   * Reads through an in-memory cache so switching between Before, After and the
+   * follow-up tabs does not refetch what was just on screen. The cache is
+   * dropped whenever this visit changes — on save, and on a realtime event — so
+   * it can never serve data the database has moved past, and a hard refresh
+   * always starts empty.
+   */
+  const load = useCallback(async (options: { fresh?: boolean } = {}) => {
     setError(null);
+
+    if (options.fresh) invalidateCached(cacheKey);
+
+    const cached = getCached<{ slots: ImageSlot[]; access: EditAccess }>(cacheKey);
+
+    if (cached) {
+      setSlots(cached.slots);
+      setAccess(cached.access);
+      setEditing((current) => current || (!cached.access.locked && mayUpload));
+      return;
+    }
 
     const [slotsResult, accessResult] = await Promise.all([
       getVisitSlots({ visitId: visit.id }),
@@ -113,8 +137,10 @@ export function VisitImagesPanel({
       // an editing session that is already open — a partly failed save reloads
       // the slots while the clinician still has changes staged.
       setEditing((current) => current || (!accessResult.data.locked && mayUpload));
+
+      setCached(cacheKey, { slots: slotsResult.data, access: accessResult.data });
     }
-  }, [caseId, visit.id, mayUpload]);
+  }, [caseId, visit.id, mayUpload, cacheKey]);
 
   useEffect(() => {
     // Fetch-on-mount for the visit's slot grid and this user's editing rights.
@@ -132,7 +158,7 @@ export function VisitImagesPanel({
       { table: "case_edit_requests", filter: `case_id=eq.${caseId}` },
     ],
     onChange: () => {
-      if (!saving) void load();
+      if (!saving) void load({ fresh: true });
     },
   });
 
@@ -204,10 +230,7 @@ export function VisitImagesPanel({
     setSaveError(null);
 
     const entries = Object.entries(staged);
-    const applied: string[] = [];
-    const failures: string[] = [];
-
-    for (const [viewTypeId, change] of entries) {
+    const outcomes = await mapWithConcurrency(entries, MAX_CONCURRENT_IMAGE_SAVES, async ([viewTypeId, change]) => {
       const name =
         slots.find((slot) => slot.viewType.id === viewTypeId)?.viewType.display_name ?? "view";
 
@@ -238,11 +261,13 @@ export function VisitImagesPanel({
           if (!result.ok) throw new Error(result.error.message);
         }
 
-        applied.push(viewTypeId);
+        return { viewTypeId, name, error: null as string | null };
       } catch (cause) {
-        failures.push(
-          `${name}: ${cause instanceof Error ? cause.message : "could not be saved."}`,
-        );
+        return {
+          viewTypeId,
+          name,
+          error: cause instanceof Error ? cause.message : "could not be saved.",
+        };
       } finally {
         setProgress((current) => {
           const { [viewTypeId]: _done, ...rest } = current;
@@ -250,7 +275,14 @@ export function VisitImagesPanel({
           return rest;
         });
       }
-    }
+    });
+
+    const applied = outcomes
+      .filter((outcome) => outcome.error === null)
+      .map((outcome) => outcome.viewTypeId);
+    const failures = outcomes
+      .filter((outcome) => outcome.error !== null)
+      .map((outcome) => `${outcome.name}: ${outcome.error}`);
 
     // Drop what succeeded; anything left is what still needs attention.
     setStaged((current) => {
@@ -269,7 +301,7 @@ export function VisitImagesPanel({
     if (failures.length > 0) {
       setSaveError(failures.join(" "));
       setSaving(false);
-      await load();
+      await load({ fresh: true });
       return;
     }
 
@@ -279,7 +311,7 @@ export function VisitImagesPanel({
 
     if (!submission.ok) {
       setSaveError(submission.error.message);
-      await load();
+      await load({ fresh: true });
       return;
     }
 
@@ -287,7 +319,7 @@ export function VisitImagesPanel({
     setEditing(false);
     toast.success(`${visit.display_label} images saved. An administrator has been notified.`);
 
-    await load();
+    await load({ fresh: true });
     router.refresh();
   }, [caseId, load, maxImageBytes, router, slots, staged, visit.display_label, visit.id]);
 
@@ -493,8 +525,32 @@ export function VisitImagesPanel({
         scope="VISIT_IMAGES"
         visitId={visit.id}
         sectionLabel={`${visit.display_label} images`}
-        onRequested={load}
+        onRequested={() => load({ fresh: true })}
       />
     </div>
   );
+}
+
+/** Runs independent view changes in bounded parallel batches, preserving order. */
+async function mapWithConcurrency<T, R>(
+  values: T[],
+  limit: number,
+  mapper: (value: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(values.length);
+  let nextIndex = 0;
+
+  async function worker() {
+    while (true) {
+      const index = nextIndex;
+      nextIndex += 1;
+      if (index >= values.length) return;
+      results[index] = await mapper(values[index]);
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(limit, values.length) }, () => worker()),
+  );
+  return results;
 }

@@ -25,6 +25,7 @@ export function CaseTabs({
   currentUserId,
   notesEditAccess,
   maxImageBytes,
+  initialTab = "overview",
 }: {
   detail: CaseDetail;
   viewTypes: ImageViewType[];
@@ -32,8 +33,9 @@ export function CaseTabs({
   currentUserId: string;
   notesEditAccess: EditAccess;
   maxImageBytes: number;
+  initialTab?: string;
 }) {
-  const [tab, setTab] = useState("overview");
+  const [tab, setTab] = useState(initialTab);
 
   const beforeVisit = detail.visits.find((visit) => visit.visit_type === "BEFORE") ?? null;
   const afterVisit = detail.visits.find((visit) => visit.visit_type === "AFTER") ?? null;
@@ -47,7 +49,7 @@ export function CaseTabs({
 
   return (
     <Tabs value={tab} onValueChange={setTab} className="gap-6">
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto overflow-y-hidden">
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="before">Before</TabsTrigger>

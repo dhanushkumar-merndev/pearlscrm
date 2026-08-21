@@ -107,7 +107,12 @@ async function authorize(body: {
     body: JSON.stringify(body),
   });
 
-  if (!response.ok) throw new UploadError(await errorMessage(response));
+  if (!response.ok) {
+    throw new UploadError(
+      await errorMessage(response, "The secure upload could not be started. Please try again."),
+      response.status >= 500,
+    );
+  }
 
   return (await response.json()) as AuthorizeResponse;
 }
@@ -175,15 +180,43 @@ function putObject(params: {
  * cannot create a duplicate version record.
  */
 async function finalize(uploadSessionId: string, sha256?: string): Promise<UploadResult> {
-  const response = await fetch("/api/uploads/finalize", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ uploadSessionId, sha256 }),
-  });
+  // Finalization is idempotent in PostgreSQL. A short retry absorbs a
+  // transient Worker/database error without ever duplicating an image version.
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const response = await fetch("/api/uploads/finalize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ uploadSessionId, sha256 }),
+      });
 
-  if (!response.ok) throw new UploadError(await errorMessage(response), true);
+      if (response.ok) return (await response.json()) as UploadResult;
 
-  return (await response.json()) as UploadResult;
+      const message = await errorMessage(
+        response,
+        "The image uploaded successfully but could not be recorded yet. Please try again.",
+      );
+
+      if (response.status < 500 || attempt === 2) {
+        throw new UploadError(message, response.status >= 500);
+      }
+    } catch (error) {
+      if (error instanceof UploadError && !error.retryable) throw error;
+
+      if (attempt === 2) {
+        throw error instanceof UploadError
+          ? error
+          : new UploadError(
+              "The image uploaded successfully but could not be recorded yet. Please try again.",
+              true,
+            );
+      }
+    }
+
+    await pause(300 * (attempt + 1));
+  }
+
+  throw new UploadError("The image uploaded successfully but could not be recorded yet. Please try again.", true);
 }
 
 export async function abandonUploadSession(uploadSessionId: string): Promise<void> {
@@ -208,11 +241,22 @@ async function sha256Hex(file: File): Promise<string | undefined> {
   }
 }
 
-async function errorMessage(response: Response): Promise<string> {
+async function errorMessage(
+  response: Response,
+  internalFallback = "The upload could not be completed.",
+): Promise<string> {
   try {
-    const body = (await response.json()) as { error?: { message?: string } };
-    return body.error?.message ?? "The upload could not be completed.";
+    const body = (await response.json()) as { error?: { code?: string; message?: string } };
+    if (body.error?.code === "INTERNAL") {
+      const reference = body.error.message?.match(/Reference:\s*([a-z0-9-]+)/i)?.[1];
+      return reference ? `${internalFallback} Reference: ${reference}` : internalFallback;
+    }
+    return body.error?.message ?? internalFallback;
   } catch {
-    return "The upload could not be completed.";
+    return internalFallback;
   }
+}
+
+function pause(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 }

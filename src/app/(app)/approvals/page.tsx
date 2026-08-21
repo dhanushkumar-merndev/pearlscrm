@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/app/page-header";
 import { RealtimeRefresh } from "@/components/app/realtime-refresh";
 import { ApprovalsPanel } from "@/components/approvals/approvals-panel";
 import { requirePermission } from "@/server/auth/session";
+import { listChanges } from "@/server/queries/changes";
 import {
   listDecidedEditRequests,
   listPendingEditRequests,
@@ -20,21 +21,25 @@ export default async function ApprovalsPage({ searchParams }: PageProps<"/approv
 
   const params = await searchParams;
 
-  const [pending, decided] = await Promise.all([
+  const [pending, decided, changes] = await Promise.all([
     listPendingEditRequests(pageNumber.parse(params.pendingPage)),
     listDecidedEditRequests(pageNumber.parse(params.decidedPage)),
+    listChanges({ page: pageNumber.parse(params.changesPage) }),
   ]);
 
   return (
     <>
-      <RealtimeRefresh channel="approvals" tables={[{ table: "case_edit_requests" }]} />
+      <RealtimeRefresh
+        channel="approvals"
+        tables={[{ table: "case_edit_requests" }, { table: "audit_logs" }]}
+      />
 
       <PageHeader
         title="Edit Approvals"
         description="Submitted case information, image sets and follow-ups are locked. Approving a request grants the requester one editing pass; saving their changes closes it again."
       />
 
-      <ApprovalsPanel pending={pending} decided={decided} />
+      <ApprovalsPanel pending={pending} decided={decided} changes={changes} />
     </>
   );
 }

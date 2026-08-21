@@ -63,6 +63,20 @@ export async function recordConsent(
         image_use_consent: consent.image_use_consent,
         ...(previous ? { previous_image_use_consent: previous.image_use_consent } : {}),
         has_notes: Boolean(consent.notes),
+        // A consent change is one of the most consequential edits on a case, so
+        // it is recorded in the shared `{ field: { from, to } }` shape and shows
+        // on the Changes screen with the rest.
+        ...(previous && previous.image_use_consent !== consent.image_use_consent
+          ? {
+              changed_fields: ["image_use_consent"],
+              changes: {
+                image_use_consent: {
+                  from: previous.image_use_consent,
+                  to: consent.image_use_consent,
+                },
+              },
+            }
+          : {}),
       },
     });
 

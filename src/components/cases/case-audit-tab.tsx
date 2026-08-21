@@ -16,6 +16,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { getCached, setCached } from "@/lib/client-cache";
 import { formatTimestamp } from "@/lib/dates";
 import { getCaseAudit } from "@/server/actions/audit";
 import type { CaseAuditPage } from "@/server/queries/audit";
@@ -31,13 +32,28 @@ export function CaseAuditTab({ caseId }: { caseId: string }) {
 
   const rows = result?.rows ?? null;
 
+  // Cached per case *and* page, so paging back and forth — and returning to the
+  // tab later — costs nothing. A hard refresh starts with an empty cache.
   const load = useCallback(
     async (signal: { cancelled: boolean }) => {
+      const cacheKey = `case-audit:${caseId}:${page}`;
+      const cached = getCached<CaseAuditPage>(cacheKey);
+
+      if (cached) {
+        setResult(cached);
+        return;
+      }
+
       const response = await getCaseAudit({ caseId, page });
       if (signal.cancelled) return;
 
-      if (!response.ok) setError(response.error.message);
-      else setResult(response.data);
+      if (!response.ok) {
+        setError(response.error.message);
+        return;
+      }
+
+      setResult(response.data);
+      setCached(cacheKey, response.data);
     },
     [caseId, page],
   );
@@ -110,7 +126,7 @@ export function CaseAuditTab({ caseId }: { caseId: string }) {
                       {formatAuditAction(row.action)}
                     </TableCell>
                     <TableCell className="hidden md:table-cell">{row.entity_type}</TableCell>
-                    <TableCell className="whitespace-nowrap">
+                    <TableCell className="w-full min-w-0">
                       <AuditDetails metadata={row.metadata} />
                     </TableCell>
                   </TableRow>

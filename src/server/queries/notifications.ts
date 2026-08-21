@@ -11,24 +11,55 @@ import type { AppNotification, CaseEditRequestRow } from "@/lib/types";
  * never widen that with the service role.
  */
 
-type NotificationJoin = Omit<AppNotification, "case_number"> & {
+type NotificationJoin = Omit<AppNotification, "case_number" | "edit_scope" | "visit_type"> & {
   cases: { case_number: string } | null;
+  case_edit_requests: { scope: AppNotification["edit_scope"] } | null;
+  case_visits: { visit_type: AppNotification["visit_type"] } | null;
 };
+
+const NOTIFICATION_SELECT =
+  "*, cases(case_number), case_edit_requests(scope), case_visits(visit_type)";
+
+function flattenNotification({
+  cases,
+  case_edit_requests,
+  case_visits,
+  ...row
+}: NotificationJoin): AppNotification {
+  return {
+    ...row,
+    case_number: cases?.case_number ?? null,
+    edit_scope: case_edit_requests?.scope ?? null,
+    visit_type: case_visits?.visit_type ?? null,
+  };
+}
 
 export async function listNotifications(limit = 30): Promise<AppNotification[]> {
   const supabase = await createSupabaseServerClient();
 
   const { data } = await supabase
     .from("notifications")
-    .select("*, cases(case_number)")
+    .select(NOTIFICATION_SELECT)
     .order("created_at", { ascending: false })
     .limit(limit)
     .returns<NotificationJoin[]>();
 
-  return (data ?? []).map(({ cases, ...row }) => ({
-    ...row,
-    case_number: cases?.case_number ?? null,
-  }));
+  return (data ?? []).map(flattenNotification);
+}
+
+/** The bell is intentionally an unread queue, rather than a second archive. */
+export async function listUnreadNotifications(limit = 12): Promise<AppNotification[]> {
+  const supabase = await createSupabaseServerClient();
+
+  const { data } = await supabase
+    .from("notifications")
+    .select(NOTIFICATION_SELECT)
+    .is("read_at", null)
+    .order("created_at", { ascending: false })
+    .limit(limit)
+    .returns<NotificationJoin[]>();
+
+  return (data ?? []).map(flattenNotification);
 }
 
 export async function countUnreadNotifications(): Promise<number> {
