@@ -19,11 +19,14 @@ import type { CaseDetail } from "@/server/queries/cases";
 export function CaseOverviewTab({
   detail,
   currentUserId,
+  showCreator,
   showReview,
   onNavigate,
 }: {
   detail: CaseDetail;
   currentUserId: string;
+  /** Creator identity is operational metadata reserved for administrators. */
+  showCreator: boolean;
   /** The expert review tab exists only for the reviewing administrator. */
   showReview: boolean;
   onNavigate: (tab: string) => void;
@@ -55,6 +58,18 @@ export function CaseOverviewTab({
                 value={String(summary.followup_count)}
                 mono
               />
+              {showCreator ? (
+                <>
+                  <Detail
+                    label="Created by"
+                    value={
+                      detail.creatorName ??
+                      (summary.created_by ? "Unknown user" : "Not recorded")
+                    }
+                  />
+                  <Detail label="Created on" value={formatClinicDate(summary.created_at)} mono />
+                </>
+              ) : null}
             </dl>
           </CardContent>
         </Card>

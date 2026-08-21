@@ -69,6 +69,7 @@ export function CaseTabs({
         <CaseOverviewTab
           detail={detail}
           currentUserId={currentUserId}
+          showCreator={role === "ADMIN"}
           showReview={showReview}
           onNavigate={setTab}
         />

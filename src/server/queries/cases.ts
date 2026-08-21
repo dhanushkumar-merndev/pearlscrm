@@ -126,6 +126,7 @@ async function caseIdsForTag(tagId: string): Promise<string[]> {
 
 export type CaseDetail = {
   summary: CaseListRow;
+  creatorName: string | null;
   visits: CaseVisit[];
   notes: CaseNotes | null;
   changesPerformed: CaseChangePerformed[];
@@ -140,7 +141,10 @@ export type CaseDetail = {
   editRequests: CaseEditRequestRow[];
 };
 
-export async function getCaseDetail(caseId: string): Promise<CaseDetail> {
+export async function getCaseDetail(
+  caseId: string,
+  options: { includeCreator?: boolean } = {},
+): Promise<CaseDetail> {
   const supabase = await createSupabaseServerClient();
 
   const { data: summary } = await supabase
@@ -160,6 +164,7 @@ export async function getCaseDetail(caseId: string): Promise<CaseDetail> {
     tagsRes,
     completionRes,
     editRequests,
+    creatorRes,
   ] = await Promise.all([
       supabase
         .from("case_visits")
@@ -189,6 +194,13 @@ export async function getCaseDetail(caseId: string): Promise<CaseDetail> {
         .returns<{ clinical_tags: MasterValue }[]>(),
       supabase.rpc("case_completion", { p_case_id: caseId }),
       listCaseEditRequests(caseId),
+      options.includeCreator && summary.created_by
+        ? supabase
+            .from("profiles")
+            .select("display_name")
+            .eq("id", summary.created_by)
+            .maybeSingle<{ display_name: string }>()
+        : Promise.resolve({ data: null }),
     ]);
 
   const consentHistory = consentRes.data ?? [];
@@ -206,6 +218,7 @@ export async function getCaseDetail(caseId: string): Promise<CaseDetail> {
 
   return {
     summary,
+    creatorName: creatorRes.data?.display_name ?? null,
     visits: visitsRes.data ?? [],
     notes: notesRes.data ?? null,
     changesPerformed: changesRes.data ?? [],

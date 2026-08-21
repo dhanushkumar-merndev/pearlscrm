@@ -32,7 +32,7 @@ export default async function CaseDetailPage({ params }: PageProps<"/cases/[case
 
   let detail;
   try {
-    detail = await getCaseDetail(caseId);
+    detail = await getCaseDetail(caseId, { includeCreator: user.role === "ADMIN" });
   } catch (error) {
     if (error instanceof AppError && error.code === "NOT_FOUND") notFound();
     throw error;
