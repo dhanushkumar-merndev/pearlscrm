@@ -51,7 +51,7 @@ export function TypeOrCreateCombobox({
   onValueChange,
   searchAction,
   createAction,
-  selectedValue = null,
+  selectedValue,
   placeholder = "Select or type a value",
   emptyText = "No matches found.",
   disabled = false,
@@ -65,17 +65,56 @@ export function TypeOrCreateCombobox({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [creating, startCreate] = useTransition();
-  const [selected, setSelected] = useState<MasterValue | null>(selectedValue);
+  const [selected, setSelected] = useState<MasterValue | null>(selectedValue ?? null);
 
   const requestId = useRef(0);
 
-  // Keep internal selection in sync with the parent's value. React's
-  // "adjust state during render" pattern: the setter is safe here because it
-  // runs during render of the component that owns the state, and it is
-  // idempotent (guarded by the id comparison).
-  if (selected?.id !== selectedValue?.id) {
+  // Reconcile the internal selection with what the parent controls. React's
+  // "adjust state during render" pattern: safe because it runs during render of
+  // the component owning the state, and each branch is idempotent.
+  //
+  // The reconciliation keys off `value` — the id the parent actually controls —
+  // not off `selectedValue`. Most callers pass only `value`, leaving
+  // `selectedValue` undefined; syncing to it unconditionally cleared the option
+  // the user had just picked on the very next render, so the trigger snapped
+  // back to its placeholder.
+  if (selectedValue && selectedValue.id !== selected?.id) {
+    // A caller that resolves the record itself (editing a historical value,
+    // which may be inactive and absent from search results) wins.
     setSelected(selectedValue);
+  } else if (!value && selected) {
+    // The parent cleared the field — a form reset, or a picker like Tags that
+    // deliberately holds no value and collects chosen items elsewhere.
+    setSelected(null);
   }
+
+  // Resolve the label for a value the parent supplied as a bare id.
+  //
+  // The edit forms know the procedure id but not its record, so without this the
+  // trigger renders its placeholder over a field that genuinely has a value —
+  // making a populated form look empty. `searchAction` is bound with
+  // `includeInactiveId`, so a historical inactive value resolves too.
+  useEffect(() => {
+    if (!value || selected?.id === value) return;
+
+    let cancelled = false;
+
+    // State is only ever set in the async completion, never synchronously here.
+    void searchAction("")
+      .then((results) => {
+        if (cancelled) return;
+        const match = results.find((option) => option.id === value);
+        if (match) setSelected(match);
+      })
+      .catch(() => {
+        // A failed lookup leaves the placeholder showing; the field still holds
+        // its value and saving is unaffected.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [value, selected?.id, searchAction]);
 
   const runSearch = useCallback(
     async (term: string) => {

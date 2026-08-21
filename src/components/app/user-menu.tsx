@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { LogOut, UserRound } from "lucide-react";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -47,9 +49,11 @@ export function UserMenu({
 
         <DropdownMenuSeparator />
 
-        <DropdownMenuItem disabled>
-          <UserRound aria-hidden />
-          Profile
+        <DropdownMenuItem asChild>
+          <Link href="/profile">
+            <UserRound aria-hidden />
+            Profile
+          </Link>
         </DropdownMenuItem>
 
         <DropdownMenuSeparator />

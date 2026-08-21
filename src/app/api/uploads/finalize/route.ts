@@ -2,6 +2,7 @@ import { revalidatePath } from "next/cache";
 import type { NextRequest } from "next/server";
 
 import { jsonOk, readJson, withApiErrors } from "@/lib/api/route";
+import { logServerError } from "@/lib/errors";
 import { finalizeUploadSchema } from "@/lib/validation/schemas";
 import { requirePermission } from "@/server/auth/session";
 import { finalizeUpload } from "@/server/services/images";
@@ -22,7 +23,13 @@ export const POST = withApiErrors(async (request: NextRequest) => {
     sha256: body.sha256,
   });
 
-  revalidatePath("/cases");
+  // The version row is already committed by this point. A failure to refresh a
+  // cache must not turn a successful upload into a 500 the client retries.
+  try {
+    revalidatePath("/cases");
+  } catch (cause) {
+    logServerError(cause, `finalize:revalidate:${body.uploadSessionId}`);
+  }
 
   // Object keys stay server-side; the client gets only what it needs to render.
   return jsonOk({

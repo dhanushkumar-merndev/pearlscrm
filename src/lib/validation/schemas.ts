@@ -361,6 +361,33 @@ export const updateUserSchema = z.object({
   isActive: z.boolean().optional(),
 });
 
+// --- Own profile -------------------------------------------------------------
+
+export const updateOwnProfileSchema = z.object({
+  displayName: z
+    .string()
+    .transform((value) => value.replace(/\s+/g, " ").trim())
+    .pipe(z.string().min(1, "Enter your name").max(120, "Use 120 characters or fewer")),
+});
+
+export const changeOwnPasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1, "Enter your current password"),
+    newPassword: z
+      .string()
+      .min(12, "Use at least 12 characters")
+      .max(128, "Use 128 characters or fewer"),
+    confirmPassword: z.string().min(1, "Repeat the new password"),
+  })
+  .refine((value) => value.newPassword === value.confirmPassword, {
+    message: "The two passwords do not match",
+    path: ["confirmPassword"],
+  })
+  .refine((value) => value.newPassword !== value.currentPassword, {
+    message: "Choose a password different from the current one",
+    path: ["newPassword"],
+  });
+
 // --- Audit -------------------------------------------------------------------
 
 export const auditQuerySchema = z.object({

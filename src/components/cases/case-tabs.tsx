@@ -47,6 +47,10 @@ export function CaseTabs({
   const showReview = can(role, "review:read");
   const archived = Boolean(detail.summary.archived_at);
 
+  // The After phase opens only once Before has been saved. The server enforces
+  // this too — this is the explanation, not the control.
+  const beforeSubmitted = Boolean(beforeVisit?.images_locked_at);
+
   return (
     <Tabs value={tab} onValueChange={setTab} className="gap-6">
       <div className="overflow-x-auto overflow-y-hidden">
@@ -101,6 +105,11 @@ export function CaseTabs({
             role={role}
             maxImageBytes={maxImageBytes}
             readOnly={archived}
+            blockedReason={
+              beforeSubmitted
+                ? null
+                : "Save the Before images first. The post-operative set is a comparison against them, so it opens once Before has been recorded."
+            }
           />
         ) : (
           <MissingPhase phase="After" />

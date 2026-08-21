@@ -2,7 +2,7 @@ import "server-only";
 
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { AppError, forbidden, notFound, validationFailed } from "@/lib/errors";
+import { AppError, forbidden, logServerError, notFound, validationFailed } from "@/lib/errors";
 import { serverEnv } from "@/lib/env/server";
 import {
   buildObjectKey,
@@ -70,14 +70,24 @@ async function validateUploadContext(params: {
 
   const { data: visit } = await supabase
     .from("case_visits")
-    .select("id, case_id, display_label")
+    .select("id, case_id, display_label, visit_type")
     .eq("id", params.visitId)
-    .maybeSingle<{ id: string; case_id: string; display_label: string }>();
+    .maybeSingle<{
+      id: string;
+      case_id: string;
+      display_label: string;
+      visit_type: "BEFORE" | "AFTER" | "FOLLOW_UP";
+    }>();
 
   if (!visit) throw notFound("This visit could not be found.");
   if (visit.case_id !== params.caseId) {
     throw forbidden("That visit does not belong to this case.");
   }
+
+  // The post-operative set only makes sense once the pre-operative set exists:
+  // a comparison needs both halves, and a Before recorded after the fact is no
+  // longer a record of what was there beforehand.
+  if (visit.visit_type === "AFTER") await requireBeforeSubmitted(params.caseId);
 
   // A submitted image set is closed. Reopening it needs an administrator's
   // approval, checked here rather than only in the UI.
@@ -109,6 +119,31 @@ async function validateUploadContext(params: {
     visitLabel: visit.display_label,
     isReplacement: Boolean(existing?.current_version_id),
   };
+}
+
+/**
+ * Throws unless the case's Before set has been submitted.
+ *
+ * Enforced here rather than only in the UI: the rule is about the integrity of
+ * the clinical record, so it has to hold for a direct API call too.
+ */
+async function requireBeforeSubmitted(caseId: string): Promise<void> {
+  const supabase = await createSupabaseServerClient();
+
+  const { data: before } = await supabase
+    .from("case_visits")
+    .select("id, images_locked_at")
+    .eq("case_id", caseId)
+    .eq("visit_type", "BEFORE")
+    .maybeSingle<{ id: string; images_locked_at: string | null }>();
+
+  if (!before) throw notFound("This case has no Before phase.");
+
+  if (!before.images_locked_at) {
+    throw validationFailed(
+      "The Before images must be saved before the After images can be added.",
+    );
+  }
 }
 
 export async function authorizeUpload(params: {
@@ -258,7 +293,21 @@ export async function finalizeUpload(params: {
 
   // A presigned PUT proves nothing on its own — confirm the object exists and
   // matches what was authorized before any metadata row is written.
-  const head = await headObject(session.object_key);
+  //
+  // A storage failure here is distinct from "the object is not there": the
+  // former is our problem, the latter is the client's. Collapsing both into one
+  // generic message is what made an earlier batch of failures undiagnosable.
+  let head: Awaited<ReturnType<typeof headObject>>;
+
+  try {
+    head = await headObject(session.object_key);
+  } catch (cause) {
+    logServerError(cause, `finalize:head:${session.id}`);
+    throw new AppError(
+      "INTERNAL",
+      "Secure storage could not confirm the upload. The image is still stored — please try saving again.",
+    );
+  }
 
   if (!head.exists) {
     throw validationFailed(
@@ -293,7 +342,22 @@ export async function finalizeUpload(params: {
     .single<ClinicalImageVersion>();
 
   if (error || !version) {
-    throw new AppError("INTERNAL", "The image could not be recorded. Please try again.");
+    // The database's own message is the only thing that identifies *why* a
+    // finalize failed. Discarding it, as this used to, left nothing to debug
+    // from but a correlation id with no matching log line.
+    logServerError(
+      new Error(
+        `finalize_image_upload failed: ${error?.code ?? "no-code"} ${error?.message ?? "no rows returned"}` +
+          (error?.details ? ` | ${error.details}` : "") +
+          (error?.hint ? ` | ${error.hint}` : ""),
+      ),
+      `finalize:rpc:${session.id}`,
+    );
+
+    throw new AppError(
+      "INTERNAL",
+      "The image reached secure storage but could not be recorded against the case. Please try saving again.",
+    );
   }
 
   return version;

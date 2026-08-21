@@ -271,6 +271,23 @@ export async function submitVisitImages(
       throw validationFailed("That visit does not belong to this case.");
     }
 
+    // Same ordering rule the upload path enforces, repeated here so a direct
+    // submit cannot close an After phase the Before phase has not reached yet.
+    if (visit.visit_type === "AFTER") {
+      const { data: before } = await supabase
+        .from("case_visits")
+        .select("images_locked_at")
+        .eq("case_id", data.caseId)
+        .eq("visit_type", "BEFORE")
+        .maybeSingle<{ images_locked_at: string | null }>();
+
+      if (!before?.images_locked_at) {
+        throw validationFailed(
+          "The Before images must be saved before the After images can be added.",
+        );
+      }
+    }
+
     const grantId = await requireEditAccess(
       user,
       { scope: "VISIT_IMAGES", caseId: data.caseId, visitId: data.visitId },

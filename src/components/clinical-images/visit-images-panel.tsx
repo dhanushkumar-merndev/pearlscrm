@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   CheckCircle2,
   Images,
+  TriangleAlert,
   Lock,
   Pencil,
   RefreshCw,
@@ -24,6 +25,16 @@ import {
   type StagedMap,
 } from "@/components/clinical-images/staged-changes";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -63,6 +74,7 @@ export function VisitImagesPanel({
   role,
   maxImageBytes,
   readOnly = false,
+  blockedReason,
 }: {
   caseId: string;
   visit: CaseVisit;
@@ -70,6 +82,8 @@ export function VisitImagesPanel({
   role: RoleCode;
   maxImageBytes: number;
   readOnly?: boolean;
+  /** Set when an earlier phase must be completed before this one may be filled. */
+  blockedReason?: string | null;
 }) {
   const router = useRouter();
 
@@ -85,12 +99,13 @@ export function VisitImagesPanel({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [requesting, setRequesting] = useState(false);
+  const [confirmIncomplete, setConfirmIncomplete] = useState(false);
 
   // Object URLs are revoked explicitly; a ref keeps them reachable from the
   // unmount cleanup without re-running it on every staging change.
   const previewUrls = useRef(new Set<string>());
 
-  const mayUpload = !readOnly && can(role, "image:upload");
+  const mayUpload = !readOnly && !blockedReason && can(role, "image:upload");
   const mayMark = !readOnly && can(role, "image:mark_unavailable");
   const mayRequest = !readOnly && can(role, "edit_request:create");
 
@@ -337,6 +352,11 @@ export function VisitImagesPanel({
   const awaiting = Boolean(access?.pendingRequestId);
   const busy = saving || Object.keys(progress).length > 0;
 
+  // How many standard views will still be unaccounted for after this save. A
+  // view that genuinely was not captured should be marked "not available" — it
+  // then counts as resolved, and the warning is about the ones left blank.
+  const unresolved = Math.max(0, viewTypes.length - resolved);
+
   return (
     <div className="space-y-4">
       <Card>
@@ -398,7 +418,17 @@ export function VisitImagesPanel({
                     </Button>
                   ) : null}
 
-                  <Button size="sm" onClick={() => void save()} disabled={busy || stagedCount === 0}>
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      if (unresolved > 0) {
+                        setConfirmIncomplete(true);
+                        return;
+                      }
+                      void save();
+                    }}
+                    disabled={busy || stagedCount === 0}
+                  >
                     {busy ? <Spinner /> : <Save aria-hidden />}
                     Save images
                   </Button>
@@ -429,6 +459,28 @@ export function VisitImagesPanel({
           </CardContent>
         ) : null}
       </Card>
+
+      {blockedReason ? (
+        <Alert>
+          <TriangleAlert className="size-4" aria-hidden />
+          <AlertTitle>Not available yet</AlertTitle>
+          <AlertDescription>{blockedReason}</AlertDescription>
+        </Alert>
+      ) : null}
+
+      {editing && unresolved > 0 ? (
+        <Alert>
+          <TriangleAlert className="size-4" aria-hidden />
+          <AlertTitle>
+            {unresolved} of {viewTypes.length} standard views still missing
+          </AlertTitle>
+          <AlertDescription>
+            A complete set is all {viewTypes.length} views. If one genuinely was not captured, mark
+            it &ldquo;not available&rdquo; with a reason instead of leaving it blank — that is what
+            keeps the completion figure meaningful.
+          </AlertDescription>
+        </Alert>
+      ) : null}
 
       {editing && stagedCount > 0 ? (
         <Alert>
@@ -517,6 +569,34 @@ export function VisitImagesPanel({
         onIndexChange={setViewerIndex}
         visitLabel={visit.display_label}
       />
+
+      <AlertDialog open={confirmIncomplete} onOpenChange={setConfirmIncomplete}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Save {visit.display_label} with {unresolved} view
+              {unresolved === 1 ? "" : "s"} missing?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Only {resolved} of {viewTypes.length} standard views are accounted for. Saving closes
+              this phase and notifies an administrator; reopening it later needs their approval.
+              You can still mark the missing views &ldquo;not available&rdquo; first.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel>Go back</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setConfirmIncomplete(false);
+                void save();
+              }}
+            >
+              Save anyway
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <RequestEditDialog
         open={requesting}
