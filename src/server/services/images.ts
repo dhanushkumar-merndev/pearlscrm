@@ -12,6 +12,7 @@ import {
 } from "@/lib/images";
 import { deleteOrphanedObject, headObject, presignRead, presignUpload } from "@/lib/tigris/presign";
 import { recordAudit } from "@/server/services/audit";
+import { requireEditAccess } from "@/server/services/edit-access";
 import type { SessionUser } from "@/server/auth/session";
 import type { ClinicalImage, ClinicalImageVersion } from "@/lib/types";
 
@@ -39,11 +40,17 @@ type UploadContext = {
   caseId: string;
   visitId: string;
   viewTypeId: string;
+  visitLabel: string;
   isReplacement: boolean;
 };
 
-/** Re-checks every relationship the client claimed before signing anything. */
+/**
+ * Re-checks every relationship the client claimed before signing anything, and
+ * refuses when the visit's images have been submitted and this user holds no
+ * approved edit grant for them.
+ */
 async function validateUploadContext(params: {
+  user: SessionUser;
   caseId: string;
   visitId: string;
   viewTypeId: string;
@@ -63,14 +70,22 @@ async function validateUploadContext(params: {
 
   const { data: visit } = await supabase
     .from("case_visits")
-    .select("id, case_id")
+    .select("id, case_id, display_label")
     .eq("id", params.visitId)
-    .maybeSingle<{ id: string; case_id: string }>();
+    .maybeSingle<{ id: string; case_id: string; display_label: string }>();
 
   if (!visit) throw notFound("This visit could not be found.");
   if (visit.case_id !== params.caseId) {
     throw forbidden("That visit does not belong to this case.");
   }
+
+  // A submitted image set is closed. Reopening it needs an administrator's
+  // approval, checked here rather than only in the UI.
+  await requireEditAccess(
+    params.user,
+    { scope: "VISIT_IMAGES", caseId: params.caseId, visitId: params.visitId },
+    visit.display_label,
+  );
 
   const { data: viewType } = await supabase
     .from("image_view_types")
@@ -91,6 +106,7 @@ async function validateUploadContext(params: {
     caseId: params.caseId,
     visitId: params.visitId,
     viewTypeId: params.viewTypeId,
+    visitLabel: visit.display_label,
     isReplacement: Boolean(existing?.current_version_id),
   };
 }
@@ -115,7 +131,12 @@ export async function authorizeUpload(params: {
 
   if (!validation.ok) throw validationFailed(validation.message);
 
-  const context = await validateUploadContext(params);
+  const context = await validateUploadContext({
+    user: params.user,
+    caseId: params.caseId,
+    visitId: params.visitId,
+    viewTypeId: params.viewTypeId,
+  });
 
   // A fresh object id per upload is what makes replacement non-destructive:
   // the new object cannot collide with the previous one.
@@ -393,6 +414,7 @@ export async function markImageUnavailable(params: {
   reason?: string;
 }): Promise<ClinicalImage> {
   await validateUploadContext({
+    user: params.user,
     caseId: params.caseId,
     visitId: params.visitId,
     viewTypeId: params.viewTypeId,
@@ -432,6 +454,12 @@ export async function clearImageUnavailable(params: {
   if (!image) throw notFound("This image slot could not be found.");
   if (image.availability_status !== "NOT_AVAILABLE") return;
 
+  await requireEditAccess(params.user, {
+    scope: "VISIT_IMAGES",
+    caseId: image.case_id,
+    visitId: params.visitId,
+  });
+
   const { error } = await supabase
     .from("clinical_images")
     .update({
@@ -452,6 +480,55 @@ export async function clearImageUnavailable(params: {
     caseId: image.case_id,
     metadata: { visit_id: params.visitId, view_type_id: params.viewTypeId },
   });
+}
+
+/**
+ * Empties a slot during an authorized edit.
+ *
+ * "Delete" in the editing UI means the slot no longer shows that photograph. It
+ * does not mean the original is destroyed: the version row survives, marked
+ * superseded, and the stored object is left untouched so the replacement
+ * history stays complete.
+ */
+export async function removeCurrentImage(params: {
+  user: SessionUser;
+  caseId: string;
+  visitId: string;
+  viewTypeId: string;
+}): Promise<ClinicalImage> {
+  await validateUploadContext({
+    user: params.user,
+    caseId: params.caseId,
+    visitId: params.visitId,
+    viewTypeId: params.viewTypeId,
+  });
+
+  const supabase = await createSupabaseServerClient();
+
+  const { data: image } = await supabase
+    .from("clinical_images")
+    .select("id, current_version_id")
+    .eq("visit_id", params.visitId)
+    .eq("view_type_id", params.viewTypeId)
+    .maybeSingle<{ id: string; current_version_id: string | null }>();
+
+  if (!image) throw notFound("This image slot could not be found.");
+  if (!image.current_version_id) {
+    throw validationFailed("There is no image in this slot to remove.");
+  }
+
+  const admin = createSupabaseAdminClient();
+
+  const { data, error } = await admin
+    .rpc("remove_current_image", {
+      p_clinical_image_id: image.id,
+      p_actor: params.user.id,
+    })
+    .single<ClinicalImage>();
+
+  if (error || !data) throw new AppError("INTERNAL", "The image could not be removed.");
+
+  return data;
 }
 
 /**

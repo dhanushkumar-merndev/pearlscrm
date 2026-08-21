@@ -3,14 +3,33 @@
  * Query helpers apply these with `.returns<T>()` so the app is typed end to end.
  */
 
-export const ROLE_CODES = ["ADMIN", "SURGEON", "STAFF", "VIEWER"] as const;
+export const ROLE_CODES = ["ADMIN", "DOCTOR", "VIEWER"] as const;
 export type RoleCode = (typeof ROLE_CODES)[number];
 
 export const CASE_STATUSES = ["ACTIVE", "COMPLETED", "ARCHIVED"] as const;
 export type CaseStatus = (typeof CASE_STATUSES)[number];
 
-export const VISIT_TYPES = ["BEFORE", "FOLLOW_UP"] as const;
+export const VISIT_TYPES = ["BEFORE", "AFTER", "FOLLOW_UP"] as const;
 export type VisitType = (typeof VISIT_TYPES)[number];
+
+/** Scopes that lock after submission and re-open only with admin approval. */
+export const EDIT_SCOPES = [
+  "CASE_INFORMATION",
+  "CASE_NOTES",
+  "VISIT_DETAILS",
+  "VISIT_IMAGES",
+] as const;
+export type EditScope = (typeof EDIT_SCOPES)[number];
+
+export const EDIT_REQUEST_STATUSES = [
+  "PENDING",
+  "APPROVED",
+  "REJECTED",
+  "CANCELLED",
+  "CONSUMED",
+  "EXPIRED",
+] as const;
+export type EditRequestStatus = (typeof EDIT_REQUEST_STATUSES)[number];
 
 export const IMAGE_AVAILABILITY = ["UPLOADED", "MISSING", "NOT_AVAILABLE"] as const;
 export type ImageAvailability = (typeof IMAGE_AVAILABILITY)[number];
@@ -52,6 +71,7 @@ export type Profile = {
 export type ProfileWithRole = Profile & {
   role_code: RoleCode;
   role_name: string;
+  case_visibility_scope: "ALL" | "SELECTED";
   email?: string | null;
   last_sign_in_at?: string | null;
 };
@@ -73,6 +93,7 @@ export type CaseRow = {
   surgery_date: string;
   status: CaseStatus;
   followup_availability: string | null;
+  information_locked_at: string | null;
   archived_at: string | null;
   archived_by: string | null;
   created_by: string | null;
@@ -91,6 +112,7 @@ export type CaseListRow = {
   surgery_date: string;
   status: CaseStatus;
   followup_availability: string | null;
+  information_locked_at: string | null;
   archived_at: string | null;
   created_at: string;
   updated_at: string;
@@ -105,6 +127,8 @@ export type CaseListRow = {
   reviewed_at: string | null;
   before_uploaded_count: number | null;
   before_not_available_count: number | null;
+  after_uploaded_count: number | null;
+  after_not_available_count: number | null;
   standard_view_count: number;
 };
 
@@ -116,6 +140,10 @@ export type CaseVisit = {
   display_label: string;
   months_after_surgery: number | null;
   clinical_observation: string | null;
+  /** Set when the visit's details were submitted; null means never submitted. */
+  details_locked_at: string | null;
+  /** Set when the visit's image set was submitted; null means never submitted. */
+  images_locked_at: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -182,6 +210,7 @@ export type CaseNotes = {
   created_at: string;
   updated_at: string;
   updated_by: string | null;
+  locked_at: string | null;
   version: number;
 };
 
@@ -233,6 +262,8 @@ export type CaseCompletionFacts = {
   case_information: boolean;
   before_images: boolean;
   before_images_resolved: number;
+  after_images: boolean;
+  after_images_resolved: number;
   standard_view_count: number;
   followups: boolean;
   followup_count: number;
@@ -242,3 +273,67 @@ export type CaseCompletionFacts = {
 };
 
 export type ConsentState = "YES" | "NO" | "NOT_RECORDED";
+
+export type CaseEditRequest = {
+  id: string;
+  case_id: string;
+  scope: EditScope;
+  visit_id: string | null;
+  status: EditRequestStatus;
+  reason: string;
+  requested_by: string;
+  requested_at: string;
+  decided_by: string | null;
+  decided_at: string | null;
+  decision_note: string | null;
+  expires_at: string | null;
+  consumed_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CaseEditRequestRow = CaseEditRequest & {
+  case_number: string;
+  visit_label: string | null;
+  requested_by_name: string | null;
+  decided_by_name: string | null;
+};
+
+export type AppNotification = {
+  id: string;
+  recipient_id: string;
+  type: string;
+  title: string;
+  body: string | null;
+  case_id: string | null;
+  case_number: string | null;
+  visit_id: string | null;
+  edit_request_id: string | null;
+  actor_id: string | null;
+  read_at: string | null;
+  created_at: string;
+};
+
+/** One lockable section an administrator can hand over in a decision. */
+export type GrantableScope = {
+  /** Stable key for React and for round-tripping a selection. */
+  key: string;
+  scope: EditScope;
+  visitId: string | null;
+  label: string;
+  locked: boolean;
+  /** The user already holds a pending or approved request for this section. */
+  alreadyOpen: boolean;
+};
+
+/**
+ * What the current user may do with one lockable scope, resolved server-side.
+ * `grantId` is the approval being relied upon, consumed when the save lands.
+ */
+export type EditAccess = {
+  locked: boolean;
+  allowed: boolean;
+  grantId: string | null;
+  /** Set when a request for this scope is already awaiting a decision. */
+  pendingRequestId: string | null;
+};

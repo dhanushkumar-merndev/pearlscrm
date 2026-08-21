@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ScrollText } from "lucide-react";
 
 import { AuditDetails, formatAuditAction } from "@/components/audit/audit-details";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -17,29 +18,41 @@ import {
 } from "@/components/ui/table";
 import { formatTimestamp } from "@/lib/dates";
 import { getCaseAudit } from "@/server/actions/audit";
-import type { AuditLogRow } from "@/server/queries/audit";
+import type { CaseAuditPage } from "@/server/queries/audit";
 
 /**
  * Case-level audit history. Append-only: normal users cannot alter it, and
  * details show changed field names rather than clinical content.
  */
 export function CaseAuditTab({ caseId }: { caseId: string }) {
-  const [rows, setRows] = useState<AuditLogRow[] | null>(null);
+  const [result, setResult] = useState<CaseAuditPage | null>(null);
+  const [page, setPage] = useState(1);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
+  const rows = result?.rows ?? null;
 
-    void getCaseAudit({ caseId }).then((result) => {
-      if (cancelled) return;
-      if (!result.ok) setError(result.error.message);
-      else setRows(result.data);
-    });
+  const load = useCallback(
+    async (signal: { cancelled: boolean }) => {
+      const response = await getCaseAudit({ caseId, page });
+      if (signal.cancelled) return;
+
+      if (!response.ok) setError(response.error.message);
+      else setResult(response.data);
+    },
+    [caseId, page],
+  );
+
+  useEffect(() => {
+    const signal = { cancelled: false };
+    // Fetch-on-mount and on page change. Every state update happens inside the
+    // awaited `load`, never synchronously in this effect body.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void load(signal);
 
     return () => {
-      cancelled = true;
+      signal.cancelled = true;
     };
-  }, [caseId]);
+  }, [load]);
 
   return (
     <Card>
@@ -97,13 +110,46 @@ export function CaseAuditTab({ caseId }: { caseId: string }) {
                       {formatAuditAction(row.action)}
                     </TableCell>
                     <TableCell className="hidden md:table-cell">{row.entity_type}</TableCell>
-                    <TableCell>
+                    <TableCell className="whitespace-nowrap">
                       <AuditDetails metadata={row.metadata} />
                     </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
+          </div>
+        ) : null}
+
+        {result && result.total > result.pageSize ? (
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-muted-foreground text-sm" aria-live="polite">
+              {`Showing ${(result.page - 1) * result.pageSize + 1}–${Math.min(
+                result.page * result.pageSize,
+                result.total,
+              )} of ${result.total} events`}
+            </p>
+
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={result.page <= 1}
+                onClick={() => setPage((current) => Math.max(1, current - 1))}
+              >
+                Previous
+              </Button>
+              <span className="text-muted-foreground text-sm tabular-nums">
+                Page {result.page} of {result.pageCount}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={result.page >= result.pageCount}
+                onClick={() => setPage((current) => current + 1)}
+              >
+                Next
+              </Button>
+            </div>
           </div>
         ) : null}
       </CardContent>

@@ -3,10 +3,22 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Archive, ArchiveRestore, CheckCircle2, MoreHorizontal, RotateCcw } from "lucide-react";
+import {
+  Archive,
+  ArchiveRestore,
+  CheckCircle2,
+  Lock,
+  MoreHorizontal,
+  Pencil,
+  RotateCcw,
+  Users,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { CaseStatusBadge, ConsentBadge, ReviewBadge } from "@/components/app/status-badges";
+import { EditCaseDialog } from "@/components/cases/edit-case-dialog";
+import { ManageCaseAccessDialog } from "@/components/cases/manage-case-access-dialog";
+import { RequestEditDialog } from "@/components/cases/request-edit-dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -39,7 +51,9 @@ import { formatClinicDate } from "@/lib/dates";
 import { completionPercent, isComplete } from "@/lib/completion";
 import { can } from "@/lib/permissions";
 import { archiveCase, markCaseCompleted, reopenCase, restoreCase } from "@/server/actions/cases";
+import { getEditAccess } from "@/server/actions/edit-requests";
 import type { CaseDetail } from "@/server/queries/cases";
+import type { CaseAccessUser } from "@/server/queries/case-access";
 import type { RoleCode } from "@/lib/types";
 
 /**
@@ -48,15 +62,54 @@ import type { RoleCode } from "@/lib/types";
  * Operational status, data completion and expert review are shown as three
  * separate signals rather than collapsed into one overloaded label.
  */
-export function CaseDetailHeader({ detail, role }: { detail: CaseDetail; role: RoleCode }) {
+export function CaseDetailHeader({
+  detail,
+  role,
+  accessUsers,
+}: {
+  detail: CaseDetail;
+  role: RoleCode;
+  accessUsers: CaseAccessUser[] | null;
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [confirm, setConfirm] = useState<"archive" | "restore" | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [requesting, setRequesting] = useState(false);
+  const [managingAccess, setManagingAccess] = useState(false);
 
   const { summary, completion, consentState, review } = detail;
   const percent = completionPercent(completion);
   const complete = isComplete(completion);
   const archived = Boolean(summary.archived_at);
+
+  /**
+   * Case information locks when the case is created. Clicking Edit asks the
+   * server where this user stands before opening anything: either the editor,
+   * or the approval request that has to precede it.
+   */
+  const beginEdit = () => {
+    startTransition(async () => {
+      const result = await getEditAccess({ caseId: summary.id, scope: "CASE_INFORMATION" });
+
+      if (!result.ok) {
+        toast.error(result.error.message);
+        return;
+      }
+
+      if (result.data.allowed) {
+        setEditing(true);
+        return;
+      }
+
+      if (result.data.pendingRequestId) {
+        toast.info("Your request to edit this case is awaiting an administrator's decision.");
+        return;
+      }
+
+      setRequesting(true);
+    });
+  };
 
   const run = (label: string, action: () => Promise<{ ok: boolean; error?: { message: string } }>) => {
     startTransition(async () => {
@@ -141,7 +194,21 @@ export function CaseDetailHeader({ detail, role }: { detail: CaseDetail; role: R
               </Button>
             </DropdownMenuTrigger>
 
-            <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuContent align="end" className="w-60">
+              {can(role, "case_access:manage") ? (
+                <DropdownMenuItem onSelect={() => setManagingAccess(true)}>
+                  <Users aria-hidden />
+                  Manage case access
+                </DropdownMenuItem>
+              ) : null}
+
+              {can(role, "case:update") && !archived ? (
+                <DropdownMenuItem disabled={pending} onSelect={beginEdit}>
+                  {summary.information_locked_at ? <Lock aria-hidden /> : <Pencil aria-hidden />}
+                  Edit case information
+                </DropdownMenuItem>
+              ) : null}
+
               {can(role, "case:update") && !archived ? (
                 summary.status === "COMPLETED" ? (
                   <DropdownMenuItem
@@ -188,6 +255,32 @@ export function CaseDetailHeader({ detail, role }: { detail: CaseDetail; role: R
           </DropdownMenu>
         </div>
       </div>
+
+      <EditCaseDialog
+        open={editing}
+        onOpenChange={setEditing}
+        summary={summary}
+        tags={detail.tags}
+        role={role}
+      />
+
+      <RequestEditDialog
+        open={requesting}
+        onOpenChange={setRequesting}
+        caseId={summary.id}
+        scope="CASE_INFORMATION"
+        sectionLabel="case information"
+      />
+
+      {accessUsers && managingAccess ? (
+        <ManageCaseAccessDialog
+          open={managingAccess}
+          onOpenChange={setManagingAccess}
+          caseId={summary.id}
+          caseNumber={summary.case_number}
+          users={accessUsers}
+        />
+      ) : null}
 
       <AlertDialog open={confirm !== null} onOpenChange={(open) => !open && setConfirm(null)}>
         <AlertDialogContent>

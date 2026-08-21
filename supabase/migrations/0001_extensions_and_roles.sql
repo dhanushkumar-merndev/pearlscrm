@@ -12,7 +12,7 @@ create table if not exists public.roles (
   code text not null unique,
   name text not null,
   created_at timestamptz not null default now(),
-  constraint roles_code_allowed check (code in ('ADMIN', 'SURGEON', 'STAFF', 'VIEWER'))
+  constraint roles_code_allowed check (code in ('ADMIN', 'DOCTOR', 'VIEWER'))
 );
 
 -- ---------------------------------------------------------------------------
@@ -110,7 +110,7 @@ stable
 security definer
 set search_path = public, pg_temp
 as $$
-  select public.current_role_code() in ('ADMIN', 'STAFF', 'SURGEON');
+  select public.current_role_code() in ('ADMIN', 'DOCTOR');
 $$;
 
 -- Roles allowed to create/modify structural case records (cases, visits, images).
@@ -121,7 +121,7 @@ stable
 security definer
 set search_path = public, pg_temp
 as $$
-  select public.current_role_code() in ('ADMIN', 'STAFF');
+  select public.current_role_code() in ('ADMIN', 'DOCTOR');
 $$;
 
 revoke all on function public.current_role_code() from public;

@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import { ArrowRight, CalendarClock } from "lucide-react";
 
 import { PageHeader } from "@/components/app/page-header";
+import { RealtimeRefresh } from "@/components/app/realtime-refresh";
 import { CaseStatusBadge, ConsentBadge, ReviewBadge } from "@/components/app/status-badges";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -34,6 +35,11 @@ export default async function DashboardPage() {
 
   return (
     <>
+      <RealtimeRefresh
+        channel="dashboard"
+        tables={[{ table: "cases" }, { table: "case_visits" }]}
+      />
+
       <PageHeader
         title="Dashboard"
         description="Operational overview of the clinical case library."

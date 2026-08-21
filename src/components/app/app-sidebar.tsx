@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   ScrollText,
   Settings,
+  ShieldCheck,
   Users,
 } from "lucide-react";
 
@@ -39,6 +40,12 @@ const CLINICAL_NAV: NavItem[] = [
 ];
 
 const ADMIN_NAV: NavItem[] = [
+  {
+    href: "/approvals",
+    label: "Edit Approvals",
+    icon: ShieldCheck,
+    permission: "edit_request:decide",
+  },
   { href: "/users", label: "Users & Access", icon: Users, permission: "user:manage" },
   { href: "/audit", label: "Audit Logs", icon: ScrollText, permission: "audit:read" },
   { href: "/settings/master-data", label: "Settings", icon: Settings, permission: "master_data:manage" },

@@ -1,12 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { CalendarPlus, CalendarRange, Pencil, Trash2 } from "lucide-react";
+import { CalendarPlus, CalendarRange, Lock, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 
 import { VisitImagesPanel } from "@/components/clinical-images/visit-images-panel";
+import { RequestEditDialog } from "@/components/cases/request-edit-dialog";
 import { FollowupDialog } from "@/components/followups/followup-dialog";
 import {
   AlertDialog,
@@ -25,6 +26,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatClinicDate } from "@/lib/dates";
 import { can } from "@/lib/permissions";
+import { getEditAccess } from "@/server/actions/edit-requests";
 import { deleteFollowup } from "@/server/actions/visits";
 import type { CaseVisit, ImageViewType, RoleCode } from "@/lib/types";
 
@@ -53,8 +55,46 @@ export function FollowupsTab({
 }) {
   const router = useRouter();
   const [dialogVisit, setDialogVisit] = useState<CaseVisit | "new" | null>(null);
+  const [requestVisit, setRequestVisit] = useState<CaseVisit | null>(null);
+  const [checking, setChecking] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<CaseVisit | null>(null);
   const [pending, startTransition] = useTransition();
+
+  /**
+   * A follow-up's details lock the moment it is added. Clicking Edit resolves
+   * this user's standing with the server first: it either opens the editor, or
+   * it opens the approval request that has to come before one.
+   */
+  const beginEdit = (visit: CaseVisit) => {
+    setChecking(visit.id);
+
+    startTransition(async () => {
+      const result = await getEditAccess({
+        caseId,
+        scope: "VISIT_DETAILS",
+        visitId: visit.id,
+      });
+
+      setChecking(null);
+
+      if (!result.ok) {
+        toast.error(result.error.message);
+        return;
+      }
+
+      if (result.data.allowed) {
+        setDialogVisit(visit);
+        return;
+      }
+
+      if (result.data.pendingRequestId) {
+        toast.info("Your request to edit this follow-up is awaiting an administrator's decision.");
+        return;
+      }
+
+      setRequestVisit(visit);
+    });
+  };
 
   const mayCreate = !readOnly && can(role, "visit:create");
   const mayEdit = !readOnly && can(role, "visit:update");
@@ -128,8 +168,17 @@ export function FollowupsTab({
 
                     <div className="flex gap-2">
                       {mayEdit ? (
-                        <Button variant="outline" size="sm" onClick={() => setDialogVisit(visit)}>
-                          <Pencil aria-hidden />
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={checking === visit.id}
+                          onClick={() => beginEdit(visit)}
+                        >
+                          {visit.details_locked_at ? (
+                            <Lock aria-hidden />
+                          ) : (
+                            <Pencil aria-hidden />
+                          )}
                           Edit
                         </Button>
                       ) : null}
@@ -177,6 +226,17 @@ export function FollowupsTab({
         surgeryDate={surgeryDate}
         visit={dialogVisit === "new" ? null : dialogVisit}
       />
+
+      {requestVisit ? (
+        <RequestEditDialog
+          open
+          onOpenChange={(open) => !open && setRequestVisit(null)}
+          caseId={caseId}
+          scope="VISIT_DETAILS"
+          visitId={requestVisit.id}
+          sectionLabel={`${requestVisit.display_label} details`}
+        />
+      ) : null}
 
       <AlertDialog
         open={deleteTarget !== null}

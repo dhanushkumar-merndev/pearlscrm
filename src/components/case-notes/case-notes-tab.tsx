@@ -4,11 +4,21 @@ import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Controller, useFieldArray, useForm, type UseFormReturn } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ArrowDown, ArrowUp, GripVertical, Plus, Save, Trash2, TriangleAlert } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  GripVertical,
+  Plus,
+  Save,
+  ShieldQuestion,
+  Trash2,
+  TriangleAlert,
+} from "lucide-react";
 import { toast } from "sonner";
 import type { z } from "zod";
 
 import { MasterDataCombobox } from "@/components/app/master-data-combobox";
+import { RequestEditDialog } from "@/components/cases/request-edit-dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -29,7 +39,7 @@ import { can } from "@/lib/permissions";
 import { updateCaseNotesSchema } from "@/lib/validation/schemas";
 import { updateCaseNotes } from "@/server/actions/notes";
 import type { CaseDetail } from "@/server/queries/cases";
-import type { RoleCode } from "@/lib/types";
+import type { EditAccess, RoleCode } from "@/lib/types";
 
 /**
  * The schema trims and null-coerces, so its parsed output differs from the form
@@ -48,15 +58,26 @@ type NotesForm = UseFormReturn<FormValues, unknown, ParsedValues>;
  * concurrent edit by another clinician surfaces as a conflict rather than
  * silently overwriting their work.
  */
-export function CaseNotesTab({ detail, role }: { detail: CaseDetail; role: RoleCode }) {
+export function CaseNotesTab({
+  detail,
+  role,
+  editAccess,
+}: {
+  detail: CaseDetail;
+  role: RoleCode;
+  editAccess: EditAccess;
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [conflict, setConflict] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<string | null>(null);
+  const [requesting, setRequesting] = useState(false);
 
   const notes = detail.notes;
-  const editable = can(role, "notes:update") && !detail.summary.archived_at;
+  const editable =
+    can(role, "notes:update") && !detail.summary.archived_at && editAccess.allowed;
+  const mayRequest = can(role, "edit_request:create") && editAccess.locked && !editAccess.allowed;
 
   const form = useForm<FormValues, unknown, ParsedValues>({
     resolver: zodResolver(updateCaseNotesSchema),
@@ -140,8 +161,14 @@ export function CaseNotesTab({ detail, role }: { detail: CaseDetail; role: RoleC
           <h2 className="text-lg font-semibold">Case notes</h2>
           <p className="text-muted-foreground text-sm">
             {editable
-              ? "Changes are saved only when you press Save."
-              : "You have read-only access to these notes."}
+              ? editAccess.locked && role !== "ADMIN"
+                ? "Administrator-approved editing pass. Saving closes this section again."
+                : "Changes are saved only when you press Save. The first save locks this section."
+              : editAccess.pendingRequestId
+                ? "Your request to edit these notes is awaiting administrator approval."
+                : editAccess.locked
+                  ? "These notes are locked after submission. Request approval to edit them."
+                  : "You have read-only access to these notes."}
           </p>
         </div>
 
@@ -166,6 +193,11 @@ export function CaseNotesTab({ detail, role }: { detail: CaseDetail; role: RoleC
               Save notes
             </Button>
           </div>
+        ) : mayRequest ? (
+          <Button type="button" variant="outline" onClick={() => setRequesting(true)}>
+            <ShieldQuestion aria-hidden />
+            Request edit approval
+          </Button>
         ) : null}
       </div>
 
@@ -504,6 +536,13 @@ export function CaseNotesTab({ detail, role }: { detail: CaseDetail; role: RoleC
           ) : null}
         </div>
       ) : null}
+      <RequestEditDialog
+        open={requesting}
+        onOpenChange={setRequesting}
+        caseId={detail.summary.id}
+        scope="CASE_NOTES"
+        sectionLabel="case notes"
+      />
     </form>
   );
 }

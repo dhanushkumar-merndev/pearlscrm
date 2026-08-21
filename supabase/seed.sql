@@ -6,8 +6,7 @@
 -- Roles -----------------------------------------------------------------------
 insert into public.roles (code, name) values
   ('ADMIN',   'Administrator'),
-  ('SURGEON', 'Surgeon'),
-  ('STAFF',   'Clinical Staff'),
+  ('DOCTOR',  'Doctor'),
   ('VIEWER',  'Viewer')
 on conflict (code) do update set name = excluded.name;
 

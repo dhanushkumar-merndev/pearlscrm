@@ -1,7 +1,13 @@
-import { AlertCircle, Check, CircleDashed, CircleSlash, Clock, X } from "lucide-react";
+import { AlertCircle, Check, CircleDashed, CircleSlash, Clock, ShieldCheck, X } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
-import type { CaseStatus, ConsentState, ImageAvailability, ReviewStatus } from "@/lib/types";
+import type {
+  CaseStatus,
+  ConsentState,
+  EditRequestStatus,
+  ImageAvailability,
+  ReviewStatus,
+} from "@/lib/types";
 
 /**
  * Status is never communicated by colour alone: every badge carries an icon and
@@ -133,6 +139,52 @@ export function ImageCompletionBadge({
     >
       {complete ? <Check aria-hidden /> : <CircleDashed aria-hidden />}
       {resolved} of {total} views
+    </Badge>
+  );
+}
+
+/** Where one edit-approval request stands. */
+export function EditRequestBadge({ status }: { status: EditRequestStatus }) {
+  if (status === "PENDING") {
+    return (
+      <Badge variant="outline" className="border-amber-600/40 text-amber-700 dark:text-amber-400">
+        <Clock aria-hidden />
+        Awaiting decision
+      </Badge>
+    );
+  }
+
+  if (status === "APPROVED") {
+    return (
+      <Badge variant="outline" className="border-emerald-600/40 text-emerald-700 dark:text-emerald-400">
+        <ShieldCheck aria-hidden />
+        Approved
+      </Badge>
+    );
+  }
+
+  if (status === "REJECTED") {
+    return (
+      <Badge variant="outline" className="border-destructive/40 text-destructive">
+        <X aria-hidden />
+        Declined
+      </Badge>
+    );
+  }
+
+  if (status === "CONSUMED") {
+    return (
+      <Badge variant="secondary">
+        <Check aria-hidden />
+        Used
+      </Badge>
+    );
+  }
+
+  return (
+    <Badge variant="outline" className="text-muted-foreground">
+      <CircleSlash aria-hidden />
+      {status === "CANCELLED" ? "Withdrawn" : "Expired"}
     </Badge>
   );
 }

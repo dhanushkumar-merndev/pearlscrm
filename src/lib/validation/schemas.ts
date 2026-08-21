@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import { isIsoDate } from "@/lib/dates";
 import { ALLOWED_IMAGE_MIME_TYPES } from "@/lib/images";
-import { MASTER_TABLES, REVIEW_STATUSES } from "@/lib/types";
+import { EDIT_SCOPES, MASTER_TABLES, REVIEW_STATUSES } from "@/lib/types";
 import { MAX_MASTER_VALUE_LENGTH } from "@/lib/master-data";
 
 /**
@@ -104,6 +104,11 @@ export const archiveCaseSchema = z.object({
 
 export const restoreCaseSchema = z.object({ caseId: uuid });
 
+export const updateCaseAccessSchema = z.object({
+  caseId: uuid,
+  userIds: z.array(uuid).max(200),
+});
+
 export const caseListQuerySchema = z.object({
   q: z.string().trim().max(200).optional().default(""),
   procedureId: uuid.optional(),
@@ -190,6 +195,86 @@ export const clearImageUnavailableSchema = z.object({
   viewTypeId: uuid,
 });
 
+/** Empties a slot. The stored original is retained and marked superseded. */
+export const removeImageSchema = z.object({
+  caseId: uuid,
+  visitId: uuid,
+  viewTypeId: uuid,
+});
+
+/**
+ * Closes a visit's image set. Sent once, after every staged file for the visit
+ * has finished uploading.
+ */
+export const submitVisitImagesSchema = z.object({
+  caseId: uuid,
+  visitId: uuid,
+});
+
+// --- Edit approvals ----------------------------------------------------------
+
+export const editScopeSchema = z.enum(EDIT_SCOPES);
+
+export const requestCaseEditSchema = z
+  .object({
+    caseId: uuid,
+    scope: editScopeSchema,
+    visitId: uuid.optional(),
+    reason: z
+      .string()
+      .transform((value) => value.replace(/\r\n/g, "\n").trim())
+      .pipe(
+        z
+          .string()
+          .min(10, "Explain why this needs to change, in at least 10 characters")
+          .max(1000, "Use 1,000 characters or fewer"),
+      ),
+  })
+  .refine(
+    (value) =>
+      (["CASE_INFORMATION", "CASE_NOTES"] as const).includes(
+        value.scope as "CASE_INFORMATION" | "CASE_NOTES",
+      ) === (value.visitId === undefined),
+    { message: "A visit is required for visit scopes and must be absent otherwise", path: ["visitId"] },
+  );
+
+/** One extra section handed over alongside the request being approved. */
+export const grantScopeSchema = z.object({
+  scope: editScopeSchema,
+  visitId: uuid.nullish().transform((value) => value ?? null),
+});
+
+export const decideEditRequestSchema = z.object({
+  requestId: uuid,
+  approve: z.boolean(),
+  additionalScopes: z.array(grantScopeSchema).max(20).default([]),
+  note: z
+    .string()
+    .transform((value) => value.trim())
+    .pipe(z.string().max(1000))
+    .optional()
+    .transform((value) => (value ? value : null)),
+  // How long the approval stays usable. Defaults to seven days.
+  ttlHours: z.coerce.number().int().min(1).max(720).default(168),
+});
+
+export const cancelEditRequestSchema = z.object({ requestId: uuid });
+
+export const editAccessQuerySchema = z.object({
+  caseId: uuid,
+  scope: editScopeSchema,
+  visitId: uuid.optional(),
+});
+
+export const grantableScopesQuerySchema = z.object({
+  caseId: uuid,
+  userId: uuid,
+});
+
+// --- Notifications -----------------------------------------------------------
+
+export const markNotificationReadSchema = z.object({ notificationId: uuid });
+
 // --- Case notes --------------------------------------------------------------
 
 export const changePerformedSchema = z.object({
@@ -261,7 +346,7 @@ export const createUserSchema = z.object({
     .string()
     .min(12, "Use at least 12 characters")
     .max(128, "Use 128 characters or fewer"),
-  roleCode: z.enum(["ADMIN", "SURGEON", "STAFF", "VIEWER"]),
+  roleCode: z.enum(["ADMIN", "DOCTOR", "VIEWER"]),
 });
 
 export const updateUserSchema = z.object({
@@ -271,7 +356,8 @@ export const updateUserSchema = z.object({
     .transform((value) => value.replace(/\s+/g, " ").trim())
     .pipe(z.string().min(1).max(120))
     .optional(),
-  roleCode: z.enum(["ADMIN", "SURGEON", "STAFF", "VIEWER"]).optional(),
+  roleCode: z.enum(["ADMIN", "DOCTOR", "VIEWER"]).optional(),
+  caseVisibilityScope: z.enum(["ALL", "SELECTED"]).optional(),
   isActive: z.boolean().optional(),
 });
 

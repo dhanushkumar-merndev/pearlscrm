@@ -30,7 +30,7 @@ pnpm install
 ### 1. Database (Supabase)
 
 1. Create a Supabase project.
-2. Apply the migrations in order from `supabase/migrations/0001` to `0009`, then run
+2. Apply the migrations in order from `supabase/migrations/0001` to `0016`, then run
    `supabase/seed.sql` (reference data only — roles, image views, procedure types,
    follow-up presets; no fake cases).
    ```bash
@@ -86,13 +86,95 @@ Open `http://localhost:3000` and sign in with the admin user created in step 1.
 | Upload/replace images | ✅ | — | ✅ | — |
 | Case notes | ✅ | ✅ | ✅ | read-only |
 | Consent records | ✅ | — | ✅ | — |
-| Expert review | ✅ | ✅ | — | — |
+| Expert review | ✅ | — | — | — |
 | Master data | manage | create | create | — |
 | Users / audit logs / archive | ✅ | — | — | — |
+| Request an edit approval | ✅ | ✅ | ✅ | — |
+| Approve an edit request | ✅ | — | — | — |
 | View cases & images | ✅ | ✅ | ✅ | ✅ |
 
 Authorization is enforced server-side on every action and again by RLS in the database —
 hiding a button is never the control.
+
+## Case phases and the submission lock
+
+A case has three structural phases — **Before**, **After** and any number of **Follow-up**
+visits — each with the same six standard clinical views.
+
+Each phase is filled in and saved **independently**, in whatever order the photographs are
+taken: Before is uploaded and saved on the day of surgery, After is saved whenever the
+post-operative set is captured, and each follow-up when that visit happens. Saving one phase
+closes that phase only — the others stay open and unlocked until their own images are saved.
+
+Images are assembled locally. Choosing files stages them in the browser with a preview;
+nothing is uploaded until **Save images**, which uploads each original directly to Tigris,
+closes that phase, and raises a single notification to every administrator.
+
+Once a section has been submitted it is locked:
+
+| Section | Locks when |
+|---|---|
+| Case information | the case is created |
+| Before / After / follow-up images | the image set is first saved |
+| Follow-up details | the follow-up is added |
+
+Editing a locked section requires an administrator to approve a written request naming the
+reason. An approval is **single use and time limited** — saving spends it, so the next edit
+asks again. Administrators are their own approvers and edit directly.
+
+When approving, the administrator sees every section of the case. The one that was requested
+is ticked and fixed; any neighbouring section can be ticked to open it in the same decision,
+and each becomes its own single-use grant.
+
+Inside an approved editing pass a user can choose replacements, remove an image from a slot,
+or mark a view not available; every change is staged locally and applied by one Save.
+Removing an image empties the *slot* only — the stored original and its version record are
+retained and marked superseded, because a clinical original is never destroyed.
+
+The lock is enforced in the server actions and image service, not in the UI: an unapproved
+upload, removal or metadata edit is refused even if the request is made directly.
+
+## Expert review and closing a case
+
+The expert review is Dr. Praveen's, and Dr. Praveen holds the ADMIN role. Only an
+administrator sees the Expert Review tab or can write the final assessment — the tab is not
+rendered for any other role, `review:*` is ADMIN-only server-side, and RLS on `case_reviews`
+restricts the write to `is_admin()`.
+
+A case cannot be marked complete until that review is COMPLETED, so closing a case is the
+reviewing administrator's decision by construction. Other roles still see *whether* a case
+has been signed off, through the header badge and the completion checklist.
+
+## Real-time updates
+
+Changes arrive over Supabase Realtime — one WebSocket per open tab, a message only when a
+row actually changes. There is no Redis, queue or cache layer, and none is warranted: at one
+administrator and roughly twenty clinicians, a broker would add cost and a failure mode for
+no benefit, and `AGENTS.md` rules it out of the stack.
+
+Realtime carries no clinical data. A change notification only says "something you can see
+has changed"; the page then re-reads through its own authorized query, so a subscriber can
+never receive a row their RLS policies would have withheld. `supabase/migrations/0012`
+publishes the watched tables; Postgres Changes applies each subscriber's own policies.
+
+## Recovered migrations 0010-0013
+
+The original SQL for migrations `0010`-`0013` was recovered from the linked project's
+`supabase_migrations.schema_migrations` history on 2026-08-21. The placeholder guards were
+replaced with the original migration names and statements:
+
+- `0010_disabled_user_role_read.sql`
+- `0011_profiles_no_self_privilege_change.sql`
+- `0012_avatars.sql`
+- `0013_role_model_and_case_visibility.sql`
+
+`supabase migration list` confirms that every local version through `0022` matches remote
+migration history. On a workstation with Docker Desktop or Podman installed, verify a full
+fresh replay before release with `pnpm dlx supabase db reset --local`. Never run
+`db reset --linked` against the production project because it deletes remote data.
+
+A slow five-minute poll remains behind the notification bell purely as a safety net for a
+socket that dropped and reconnected.
 
 ## Testing
 

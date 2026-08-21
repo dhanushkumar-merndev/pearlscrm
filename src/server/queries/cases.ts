@@ -3,11 +3,13 @@ import "server-only";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { AppError, notFound } from "@/lib/errors";
 import { caseNumberSearchPatterns } from "@/lib/case-number";
+import { listCaseEditRequests } from "@/server/queries/notifications";
 import type { CaseListQuery } from "@/lib/validation/schemas";
 import type {
   CaseChangePerformed,
   CaseCompletionFacts,
   CaseConsent,
+  CaseEditRequestRow,
   CaseListRow,
   CaseNotes,
   CaseReview,
@@ -134,6 +136,8 @@ export type CaseDetail = {
   reviewerName: string | null;
   tags: MasterValue[];
   completion: CaseCompletionFacts;
+  /** Visible to the requester and to administrators; RLS enforces which. */
+  editRequests: CaseEditRequestRow[];
 };
 
 export async function getCaseDetail(caseId: string): Promise<CaseDetail> {
@@ -147,8 +151,16 @@ export async function getCaseDetail(caseId: string): Promise<CaseDetail> {
 
   if (!summary) throw notFound("This case could not be found, or you cannot access it.");
 
-  const [visitsRes, notesRes, changesRes, consentRes, reviewRes, tagsRes, completionRes] =
-    await Promise.all([
+  const [
+    visitsRes,
+    notesRes,
+    changesRes,
+    consentRes,
+    reviewRes,
+    tagsRes,
+    completionRes,
+    editRequests,
+  ] = await Promise.all([
       supabase
         .from("case_visits")
         .select("*")
@@ -176,6 +188,7 @@ export async function getCaseDetail(caseId: string): Promise<CaseDetail> {
         .eq("case_id", caseId)
         .returns<{ clinical_tags: MasterValue }[]>(),
       supabase.rpc("case_completion", { p_case_id: caseId }),
+      listCaseEditRequests(caseId),
     ]);
 
   const consentHistory = consentRes.data ?? [];
@@ -203,6 +216,7 @@ export async function getCaseDetail(caseId: string): Promise<CaseDetail> {
     reviewerName,
     tags: (tagsRes.data ?? []).map((row) => row.clinical_tags).filter(Boolean),
     completion: (completionRes.data as CaseCompletionFacts) ?? emptyCompletion(),
+    editRequests,
   };
 }
 
@@ -211,6 +225,8 @@ function emptyCompletion(): CaseCompletionFacts {
     case_information: false,
     before_images: false,
     before_images_resolved: 0,
+    after_images: false,
+    after_images_resolved: 0,
     standard_view_count: 6,
     followups: false,
     followup_count: 0,

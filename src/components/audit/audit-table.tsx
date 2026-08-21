@@ -93,7 +93,7 @@ export function AuditTable({ result }: { result: AuditListResult }) {
                   <span className="text-muted-foreground">{row.entity_type}</span>
                 </TableCell>
 
-                <TableCell>
+                <TableCell className="whitespace-nowrap">
                   <AuditDetails metadata={row.metadata} />
                 </TableCell>
               </TableRow>

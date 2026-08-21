@@ -15,6 +15,7 @@ import {
 import type { ActionInput } from "@/lib/validation/action-input";
 import { requirePermission } from "@/server/auth/session";
 import { recordAudit, diffForAudit } from "@/server/services/audit";
+import { consumeEditGrant, requireEditAccess } from "@/server/services/edit-access";
 import { actionResult, type ActionResult } from "@/server/actions/result";
 import type { CaseRow } from "@/lib/types";
 
@@ -96,6 +97,13 @@ export async function updateCase(
 
     if (!existing) throw notFound("This case could not be found.");
 
+    // Case information locks when the case is created. Editing it again needs
+    // an administrator's approval, checked here and not only in the UI.
+    const grantId = await requireEditAccess(user, {
+      scope: "CASE_INFORMATION",
+      caseId: data.caseId,
+    });
+
     const nextVersion = data.expectedVersion + 1;
 
     // Optimistic concurrency: the update only matches while the row still holds
@@ -149,6 +157,9 @@ export async function updateCase(
         metadata: { changed_fields: changedFields, changes },
       });
     }
+
+    // The approval was single use: spend it now that the save has landed.
+    await consumeEditGrant(grantId, user.id);
 
     revalidatePath(`/cases/${data.caseId}`);
     revalidatePath("/cases");

@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { AppSidebar } from "@/components/app/app-sidebar";
+import { NotificationBell } from "@/components/app/notification-bell";
 import { UserMenu } from "@/components/app/user-menu";
 import { Separator } from "@/components/ui/separator";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
@@ -40,6 +41,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
           <SidebarTrigger className="-ml-1" />
           <Separator orientation="vertical" className="mr-2 h-4" />
           <div className="flex-1" />
+          <NotificationBell userId={user.id} />
           <UserMenu displayName={user.displayName} email={user.email} role={user.role} />
         </header>
 

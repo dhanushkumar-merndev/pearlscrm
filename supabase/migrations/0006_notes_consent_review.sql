@@ -28,6 +28,7 @@ create table if not exists public.case_notes (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   updated_by uuid references public.profiles (id) on delete set null,
+  locked_at timestamptz,
   version integer not null default 1
 );
 

@@ -110,16 +110,36 @@ async function lookupCaseNumbers(ids: string[]): Promise<Map<string, string>> {
   return new Map((data ?? []).map((row) => [row.id, row.case_number]));
 }
 
-/** Case-level history for the Audit History tab. */
-export async function getCaseAuditHistory(caseId: string, limit = 200): Promise<AuditLogRow[]> {
+export type CaseAuditPage = {
+  rows: AuditLogRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+  pageCount: number;
+};
+
+/**
+ * Case-level history for the Audit History tab.
+ *
+ * Paginated in PostgreSQL with an exact count. A busy case accumulates hundreds
+ * of events, and a capped list would silently hide the oldest ones — which is
+ * precisely the opposite of what an audit trail is for.
+ */
+export async function getCaseAuditHistory(
+  caseId: string,
+  page = 1,
+  pageSize = 25,
+): Promise<CaseAuditPage> {
   const supabase = await createSupabaseServerClient();
 
-  const { data } = await supabase
+  const from = (page - 1) * pageSize;
+
+  const { data, count } = await supabase
     .from("audit_logs")
-    .select("*")
+    .select("*", { count: "exact" })
     .eq("case_id", caseId)
     .order("created_at", { ascending: false })
-    .limit(limit)
+    .range(from, from + pageSize - 1)
     .returns<AuditLog[]>();
 
   const rows = data ?? [];
@@ -128,9 +148,17 @@ export async function getCaseAuditHistory(caseId: string, limit = 200): Promise<
   ];
   const actorNames = await lookupNames(actorIds);
 
-  return rows.map((row) => ({
-    ...row,
-    actor_name: row.actor_user_id ? (actorNames.get(row.actor_user_id) ?? null) : null,
-    case_number: null,
-  }));
+  const total = count ?? 0;
+
+  return {
+    rows: rows.map((row) => ({
+      ...row,
+      actor_name: row.actor_user_id ? (actorNames.get(row.actor_user_id) ?? null) : null,
+      case_number: null,
+    })),
+    total,
+    page,
+    pageSize,
+    pageCount: Math.max(1, Math.ceil(total / pageSize)),
+  };
 }

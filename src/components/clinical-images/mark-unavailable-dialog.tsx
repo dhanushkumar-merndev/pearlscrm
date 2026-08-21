@@ -1,7 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { toast } from "sonner";
+import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -13,9 +12,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
-import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
-import { markSlotUnavailable } from "@/server/actions/images";
 import type { ImageViewType } from "@/lib/types";
 
 /**
@@ -23,54 +20,36 @@ import type { ImageViewType } from "@/lib/types";
  *
  * This is the alternative to uploading the wrong photograph to satisfy a
  * checklist — it makes the completion figure mean something.
+ *
+ * The dialog only collects the reason: like every other change to an image set,
+ * the mark is staged locally and written when the visit is saved.
  */
 export function MarkUnavailableDialog({
   open,
   onOpenChange,
-  caseId,
-  visitId,
   viewType,
-  onDone,
+  onConfirm,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  caseId: string;
-  visitId: string;
   viewType: ImageViewType;
-  onDone: () => void | Promise<void>;
+  onConfirm: (reason: string) => void;
 }) {
   const [reason, setReason] = useState("");
-  const [pending, startTransition] = useTransition();
 
-  const submit = () => {
-    startTransition(async () => {
-      const result = await markSlotUnavailable({
-        caseId,
-        visitId,
-        viewTypeId: viewType.id,
-        reason: reason.trim() || undefined,
-      });
-
-      if (!result.ok) {
-        toast.error(result.error.message);
-        return;
-      }
-
-      toast.success(`${viewType.display_name} marked not available`);
-      setReason("");
-      onOpenChange(false);
-      await onDone();
-    });
+  const handleOpenChange = (next: boolean) => {
+    onOpenChange(next);
+    if (next) setReason("");
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Mark {viewType.display_name} as not available</DialogTitle>
           <DialogDescription>
             Use this when the view genuinely was not captured. It is recorded against your account
-            and appears in the audit history.
+            and appears in the audit history once the visit is saved.
           </DialogDescription>
         </DialogHeader>
 
@@ -88,11 +67,15 @@ export function MarkUnavailableDialog({
         </Field>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={pending}>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button onClick={submit} disabled={pending}>
-            {pending ? <Spinner /> : null}
+          <Button
+            onClick={() => {
+              onConfirm(reason.trim());
+              onOpenChange(false);
+            }}
+          >
             Mark not available
           </Button>
         </DialogFooter>

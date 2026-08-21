@@ -20,6 +20,18 @@ const nextConfig: NextConfig = {
   outputFileTracingExcludes: {
     "*": ["**/sharp/**", "**/@img/**"],
   },
+  /*
+   * Next's development server prints each Server Function call with its
+   * serialized arguments, which puts credentials in the terminal:
+   *
+   *   ƒ signIn({"email":"…","password":"…"})
+   *
+   * `signIn` and `createUser` both take a password, so this logging is turned
+   * off rather than relying on nobody reading the scrollback. Incoming request
+   * logging is kept — it carries only a method, path and duration. Set
+   * `logging: false` here to silence that too.
+   */
+  logging: { serverFunctions: false },
 };
 
 export default nextConfig;

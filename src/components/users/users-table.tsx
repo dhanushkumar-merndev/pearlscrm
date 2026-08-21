@@ -43,7 +43,14 @@ export function UsersTable({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
-  const apply = (userId: string, changes: { roleCode?: RoleCode; isActive?: boolean }) => {
+  const apply = (
+    userId: string,
+    changes: {
+      roleCode?: RoleCode;
+      caseVisibilityScope?: "ALL" | "SELECTED";
+      isActive?: boolean;
+    },
+  ) => {
     startTransition(async () => {
       const result = await updateUser({ userId, ...changes });
 
@@ -66,6 +73,7 @@ export function UsersTable({
             <TableHead>Name</TableHead>
             <TableHead>Email</TableHead>
             <TableHead>Role</TableHead>
+            <TableHead>Case access</TableHead>
             <TableHead className="hidden lg:table-cell">Last sign-in</TableHead>
             <TableHead>Active</TableHead>
           </TableRow>
@@ -107,6 +115,35 @@ export function UsersTable({
                       ))}
                     </SelectContent>
                   </Select>
+                </TableCell>
+
+                <TableCell>
+                  {user.role_code === "VIEWER" ? (
+                    <Select
+                      value={user.case_visibility_scope}
+                      disabled={pending}
+                      onValueChange={(value) =>
+                        apply(user.id, {
+                          caseVisibilityScope: value as "ALL" | "SELECTED",
+                        })
+                      }
+                    >
+                      <SelectTrigger
+                        className="w-36"
+                        aria-label={`Case access for ${user.display_name}`}
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ALL">All cases</SelectItem>
+                        <SelectItem value="SELECTED">Selected cases</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  ) : user.role_code === "DOCTOR" ? (
+                    <span className="text-muted-foreground text-sm">Related cases</span>
+                  ) : (
+                    <span className="text-muted-foreground text-sm">All cases</span>
+                  )}
                 </TableCell>
 
                 <TableCell className="hidden tabular-nums lg:table-cell">

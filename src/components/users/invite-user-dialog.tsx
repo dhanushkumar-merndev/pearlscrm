@@ -38,7 +38,7 @@ export function InviteUserDialog() {
   const [email, setEmail] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [password, setPassword] = useState("");
-  const [roleCode, setRoleCode] = useState<RoleCode>("STAFF");
+  const [roleCode, setRoleCode] = useState<RoleCode>("DOCTOR");
   const [error, setError] = useState<string | null>(null);
 
   const submit = () => {
@@ -56,7 +56,7 @@ export function InviteUserDialog() {
       setEmail("");
       setDisplayName("");
       setPassword("");
-      setRoleCode("STAFF");
+      setRoleCode("DOCTOR");
       setOpen(false);
       router.refresh();
     });
@@ -137,8 +137,8 @@ export function InviteUserDialog() {
               </SelectContent>
             </Select>
             <FieldDescription>
-              Viewers are read-only. Staff manage cases and images. Surgeons record assessments.
-              Administrators manage users and settings.
+              Viewers are read-only. Doctors manage clinical cases, images, and notes.
+              Administrators also manage users and settings.
             </FieldDescription>
             <FieldError />
           </Field>

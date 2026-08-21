@@ -19,7 +19,11 @@ import type { CaseDetail } from "@/server/queries/cases";
 import type { ReviewStatus, RoleCode } from "@/lib/types";
 
 /**
- * Expert review: the surgeon's final assessment.
+ * Expert review: the reviewing administrator's final assessment.
+ *
+ * Only an administrator reaches this tab, and a case cannot be marked complete
+ * until the review here is COMPLETED — which makes closing a case the
+ * administrator's decision by construction.
  *
  * Documented behaviour: editing an assessment after completion keeps the review
  * COMPLETED, snapshots the previous text into the revision history, and audits
@@ -73,8 +77,8 @@ export function CaseReviewTab({ detail, role }: { detail: CaseDetail; role: Role
         <CardHeader>
           <CardTitle>Dr. Praveen&rsquo;s final assessment</CardTitle>
           <CardDescription>
-            The structured expert review for this case. Recorded against the reviewing surgeon with
-            a timestamp.
+            The structured expert review for this case. Recorded against the reviewing
+            administrator with a timestamp.
           </CardDescription>
         </CardHeader>
 
@@ -162,7 +166,7 @@ export function CaseReviewTab({ detail, role }: { detail: CaseDetail; role: Role
               </div>
             ) : (
               <p className="text-muted-foreground text-sm">
-                Only a surgeon or an administrator can record the expert review.
+                Only an administrator can record the expert review.
               </p>
             )}
           </FieldGroup>

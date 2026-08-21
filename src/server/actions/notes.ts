@@ -8,6 +8,7 @@ import { updateCaseNotesSchema } from "@/lib/validation/schemas";
 import type { ActionInput } from "@/lib/validation/action-input";
 import { requirePermission } from "@/server/auth/session";
 import { recordAudit, diffForAudit } from "@/server/services/audit";
+import { consumeEditGrant, requireEditAccess } from "@/server/services/edit-access";
 import { actionResult, type ActionResult } from "@/server/actions/result";
 import type { CaseNotes } from "@/lib/types";
 
@@ -56,6 +57,13 @@ export async function updateCaseNotes(
 
     if (!existing) throw notFound("Case notes for this case could not be found.");
 
+    // The first save locks notes. Every later Doctor save must spend one
+    // administrator-approved grant; administrators remain their own approver.
+    const grantId = await requireEditAccess(user, {
+      scope: "CASE_NOTES",
+      caseId: data.caseId,
+    });
+
     const next = {
       patient_concern: data.patientConcern,
       preop_assessment: data.preopAssessment,
@@ -79,7 +87,12 @@ export async function updateCaseNotes(
 
     const { data: updated, error } = await supabase
       .from("case_notes")
-      .update({ ...next, version: data.expectedVersion + 1, updated_by: user.id })
+      .update({
+        ...next,
+        version: data.expectedVersion + 1,
+        updated_by: user.id,
+        locked_at: existing.locked_at ?? new Date().toISOString(),
+      })
       .eq("case_id", data.caseId)
       .eq("version", data.expectedVersion)
       .select("*")
@@ -114,6 +127,8 @@ export async function updateCaseNotes(
         version: updated.version,
       },
     });
+
+    await consumeEditGrant(grantId, user.id);
 
     revalidatePath(`/cases/${data.caseId}`);
 

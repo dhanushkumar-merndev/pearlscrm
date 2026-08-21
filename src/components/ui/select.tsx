@@ -60,8 +60,11 @@ function SelectTrigger({
 function SelectContent({
   className,
   children,
-  position = "item-aligned",
-  align = "center",
+  // `popper` anchors the list to the trigger and opens below it (flipping above
+  // only when there is no room). Radix's `item-aligned` default instead lays the
+  // selected item on top of the field, which reads as the menu covering it.
+  position = "popper",
+  align = "start",
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Content>) {
   return (
@@ -78,8 +81,10 @@ function SelectContent({
         <SelectPrimitive.Viewport
           data-position={position}
           className={cn(
-            "data-[position=popper]:h-(--radix-select-trigger-height) data-[position=popper]:w-full data-[position=popper]:min-w-(--radix-select-trigger-width)",
-            position === "popper" && ""
+            // Width tracks the trigger so the menu lines up with the field.
+            // Height is deliberately left to the content — pinning it to the
+            // trigger height collapses the list into a one-row scroller.
+            "data-[position=popper]:w-full data-[position=popper]:min-w-(--radix-select-trigger-width)"
           )}
         >
           {children}

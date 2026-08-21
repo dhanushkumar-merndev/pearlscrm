@@ -35,6 +35,15 @@ export function buildChecklist(facts: CaseCompletionFacts): ChecklistItem[] {
       detail: `${facts.before_images_resolved} of ${facts.standard_view_count} standard views uploaded or marked unavailable`,
     },
     {
+      key: "after_images",
+      label: "After images",
+      done: facts.after_images,
+      // Informational: the post-operative set is often still being collected
+      // when the case is otherwise complete for its current stage.
+      required: false,
+      detail: `${facts.after_images_resolved} of ${facts.standard_view_count} standard views uploaded or marked unavailable`,
+    },
+    {
       key: "case_notes",
       label: "Case notes",
       done: facts.case_notes,
@@ -53,7 +62,7 @@ export function buildChecklist(facts: CaseCompletionFacts): ChecklistItem[] {
       label: "Expert review",
       done: facts.expert_review,
       required: true,
-      detail: "Final assessment completed by a surgeon",
+      detail: "Final assessment signed off by the reviewing administrator",
     },
     {
       key: "followups",

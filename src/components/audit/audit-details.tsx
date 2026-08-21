@@ -30,13 +30,16 @@ export function AuditDetails({ metadata }: { metadata: Record<string, unknown> }
   }
 
   return (
-    <div className="flex max-w-md flex-wrap gap-1.5">
+    // One row per event: the badges stay on a single line and the table's own
+    // horizontal scroll handles a long set, rather than the cell growing tall
+    // and breaking the row rhythm of the log.
+    <div className="flex flex-nowrap items-center gap-1.5">
       {entries.map(([key, value]) => {
         const rendered = renderValue(key, value);
         if (rendered === null) return null;
 
         return (
-          <Badge key={key} variant="outline" className="font-normal">
+          <Badge key={key} variant="outline" className="font-normal whitespace-nowrap">
             <span className="text-muted-foreground">{humanize(key)}:</span>
             <span className="ml-1 max-w-40 truncate">{rendered}</span>
           </Badge>

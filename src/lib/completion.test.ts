@@ -7,6 +7,8 @@ const COMPLETE_FACTS: CaseCompletionFacts = {
   case_information: true,
   before_images: true,
   before_images_resolved: 6,
+  after_images: true,
+  after_images_resolved: 6,
   standard_view_count: 6,
   followups: true,
   followup_count: 2,
@@ -16,10 +18,10 @@ const COMPLETE_FACTS: CaseCompletionFacts = {
 };
 
 describe("buildChecklist", () => {
-  it("reports every required item and the informational follow-up item", () => {
+  it("reports every required item and the informational after/follow-up items", () => {
     const items = buildChecklist(COMPLETE_FACTS);
 
-    expect(items).toHaveLength(6);
+    expect(items).toHaveLength(7);
     expect(items.filter((item) => item.required).map((item) => item.key)).toEqual([
       "case_information",
       "before_images",
@@ -32,6 +34,14 @@ describe("buildChecklist", () => {
   it("describes before-image progress from the resolved and total counts", () => {
     const item = buildChecklist(COMPLETE_FACTS).find((entry) => entry.key === "before_images");
     expect(item?.detail).toContain("6 of 6");
+  });
+
+  it("reports the after phase without gating completion on it", () => {
+    const items = buildChecklist({ ...COMPLETE_FACTS, after_images: false, after_images_resolved: 2 });
+    const item = items.find((entry) => entry.key === "after_images");
+
+    expect(item?.required).toBe(false);
+    expect(item?.detail).toContain("2 of 6");
   });
 
   it("describes follow-up progress with correct pluralisation", () => {
@@ -52,9 +62,9 @@ describe("completionPercent", () => {
     expect(completionPercent(COMPLETE_FACTS)).toBe(100);
   });
 
-  it("counts the informational item too, so the number reflects fill-in", () => {
-    // Missing only the (non-required) follow-up: 5 of 6 items done.
-    expect(completionPercent({ ...COMPLETE_FACTS, followups: false, followup_count: 0 })).toBe(83);
+  it("counts the informational items too, so the number reflects fill-in", () => {
+    // Missing only the (non-required) follow-up: 6 of 7 items done.
+    expect(completionPercent({ ...COMPLETE_FACTS, followups: false, followup_count: 0 })).toBe(86);
   });
 
   it("returns 0 when nothing is done", () => {
@@ -62,6 +72,8 @@ describe("completionPercent", () => {
       case_information: false,
       before_images: false,
       before_images_resolved: 0,
+      after_images: false,
+      after_images_resolved: 0,
       standard_view_count: 6,
       followups: false,
       followup_count: 0,
@@ -93,6 +105,12 @@ describe("isComplete", () => {
   it("does not gate on the informational follow-up item", () => {
     // A case is never blocked from completion purely by missing follow-ups.
     expect(isComplete({ ...COMPLETE_FACTS, followups: false, followup_count: 0 })).toBe(true);
+  });
+
+  it("does not gate on the after-image set, which is often still being collected", () => {
+    expect(
+      isComplete({ ...COMPLETE_FACTS, after_images: false, after_images_resolved: 0 }),
+    ).toBe(true);
   });
 });
 

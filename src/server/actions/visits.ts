@@ -3,17 +3,20 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { AppError, notFound, validationFailed } from "@/lib/errors";
 import { monthsAfterSurgery, suggestFollowupLabel } from "@/lib/followup";
 import {
   createFollowupSchema,
   deleteVisitSchema,
+  submitVisitImagesSchema,
   updateVisitSchema,
 } from "@/lib/validation/schemas";
 import type { ActionInput } from "@/lib/validation/action-input";
 import { requirePermission } from "@/server/auth/session";
 import { recordAudit, diffForAudit } from "@/server/services/audit";
+import { consumeEditGrant, requireEditAccess } from "@/server/services/edit-access";
 import { actionResult, type ActionResult } from "@/server/actions/result";
 import type { CaseVisit, MasterValue } from "@/lib/types";
 
@@ -63,6 +66,9 @@ export async function createFollowup(
         display_label: data.displayLabel,
         months_after_surgery: months,
         clinical_observation: data.clinicalObservation,
+        // Adding a follow-up is itself a submission: changing its date, label
+        // or observation later goes through the approval workflow.
+        details_locked_at: new Date().toISOString(),
         created_by: user.id,
       })
       .select("*")
@@ -107,6 +113,13 @@ export async function updateVisit(
 
     if (!existing) throw notFound("This visit could not be found.");
 
+    // Visit details lock once submitted; editing them again needs approval.
+    const grantId = await requireEditAccess(
+      user,
+      { scope: "VISIT_DETAILS", caseId: existing.case_id, visitId: existing.id },
+      existing.display_label,
+    );
+
     const { data: caseRow } = await supabase
       .from("cases")
       .select("surgery_date")
@@ -133,6 +146,8 @@ export async function updateVisit(
         ...(data.displayLabel ? { display_label: data.displayLabel } : {}),
         clinical_observation: data.clinicalObservation,
         months_after_surgery: months,
+        // An edited visit is a re-submission, so it stays locked.
+        details_locked_at: existing.details_locked_at ?? new Date().toISOString(),
       })
       .eq("id", data.visitId)
       .select("*")
@@ -167,6 +182,9 @@ export async function updateVisit(
       });
     }
 
+    // The approval was single use: spend it now that the save has landed.
+    await consumeEditGrant(grantId, user.id);
+
     revalidatePath(`/cases/${updated.case_id}`);
 
     return { visitId: updated.id };
@@ -189,8 +207,10 @@ export async function deleteFollowup(
       .maybeSingle<CaseVisit>();
 
     if (!visit) throw notFound("This visit could not be found.");
-    if (visit.visit_type === "BEFORE") {
-      throw validationFailed("The Before visit cannot be removed from a case.");
+    if (visit.visit_type !== "FOLLOW_UP") {
+      throw validationFailed(
+        `The ${visit.display_label} phase is part of every case and cannot be removed.`,
+      );
     }
 
     const { count } = await supabase
@@ -220,6 +240,63 @@ export async function deleteFollowup(
     revalidatePath(`/cases/${visit.case_id}`);
 
     return { deleted: true as const };
+  });
+}
+
+/**
+ * Closes a visit's image set.
+ *
+ * Staged files upload one object at a time, but the *submission* is a single
+ * clinical act. This locks the visit against further edits, spends any approval
+ * that authorized this round of changes, and raises one notification to the
+ * administrators rather than one per photograph.
+ */
+export async function submitVisitImages(
+  input: ActionInput<typeof submitVisitImagesSchema>,
+): Promise<ActionResult<{ visitId: string }>> {
+  return actionResult(async () => {
+    const user = await requirePermission("image:upload");
+    const data = submitVisitImagesSchema.parse(input);
+
+    const supabase = await createSupabaseServerClient();
+
+    const { data: visit } = await supabase
+      .from("case_visits")
+      .select("*")
+      .eq("id", data.visitId)
+      .maybeSingle<CaseVisit>();
+
+    if (!visit) throw notFound("This visit could not be found.");
+    if (visit.case_id !== data.caseId) {
+      throw validationFailed("That visit does not belong to this case.");
+    }
+
+    const grantId = await requireEditAccess(
+      user,
+      { scope: "VISIT_IMAGES", caseId: data.caseId, visitId: data.visitId },
+      visit.display_label,
+    );
+
+    const admin = createSupabaseAdminClient();
+
+    // Locking, consuming the grant, notifying the administrators and auditing
+    // all happen inside one database function — including spending the grant —
+    // so the visit can never end up locked with nobody told, announced without
+    // being locked, or reopened with an approval that was already used.
+    const { error } = await admin
+      .rpc("submit_visit_images", {
+        p_visit_id: data.visitId,
+        p_grant_id: grantId,
+        p_actor: user.id,
+      })
+      .single<CaseVisit>();
+
+    if (error) throw new AppError("INTERNAL", "The images could not be submitted.");
+
+    revalidatePath(`/cases/${data.caseId}`);
+    revalidatePath("/dashboard");
+
+    return { visitId: data.visitId };
   });
 }
 

@@ -54,6 +54,9 @@ export async function createUser(
         display_name: data.displayName,
         role_id: roleId,
         is_active: true,
+        // Doctors and newly created viewers start with least-privilege case
+        // visibility. Doctors gain cases by creating them or by assignment.
+        case_visibility_scope: data.roleCode === "ADMIN" ? "ALL" : "SELECTED",
       },
       { onConflict: "id" },
     );
@@ -93,10 +96,27 @@ export async function updateUser(
 
     const admin = createSupabaseAdminClient();
 
+    const { data: target } = await admin
+      .from("profiles")
+      .select("id, roles(code)")
+      .eq("id", data.userId)
+      .maybeSingle<{ id: string; roles: { code: RoleCode } | null }>();
+
+    if (!target) throw notFound("That user could not be found.");
+
+    const resultingRole = data.roleCode ?? target.roles?.code;
+    if (data.caseVisibilityScope && resultingRole !== "VIEWER") {
+      throw validationFailed("All/selected case visibility applies only to Viewer accounts.");
+    }
+
     const update: Record<string, unknown> = {};
     if (data.displayName !== undefined) update.display_name = data.displayName;
     if (data.isActive !== undefined) update.is_active = data.isActive;
-    if (data.roleCode) update.role_id = await roleIdForCode(data.roleCode);
+    if (data.roleCode) {
+      update.role_id = await roleIdForCode(data.roleCode);
+      update.case_visibility_scope = data.roleCode === "ADMIN" ? "ALL" : "SELECTED";
+    }
+    if (data.caseVisibilityScope) update.case_visibility_scope = data.caseVisibilityScope;
 
     if (Object.keys(update).length === 0) return { userId: data.userId };
 
@@ -128,6 +148,7 @@ export async function updateUser(
       entityId: data.userId,
       metadata: {
         ...(data.roleCode ? { role: data.roleCode } : {}),
+        ...(data.caseVisibilityScope ? { case_visibility_scope: data.caseVisibilityScope } : {}),
         ...(data.isActive !== undefined ? { is_active: data.isActive } : {}),
         ...(data.displayName !== undefined ? { display_name_changed: true } : {}),
       },
@@ -160,7 +181,7 @@ export async function listUsers(): Promise<ProfileWithRole[]> {
 
   const { data: profiles } = await supabase
     .from("profiles")
-    .select("id, display_name, role_id, is_active, created_at, updated_at, roles(code, name)")
+    .select("id, display_name, role_id, is_active, case_visibility_scope, created_at, updated_at, roles(code, name)")
     .order("display_name", { ascending: true })
     .returns<
       (ProfileWithRole & { roles: { code: RoleCode; name: string } | null })[]
@@ -188,6 +209,7 @@ export async function listUsers(): Promise<ProfileWithRole[]> {
     updated_at: row.updated_at,
     role_code: row.roles?.code ?? "VIEWER",
     role_name: row.roles?.name ?? "Viewer",
+    case_visibility_scope: row.case_visibility_scope,
     email: authById.get(row.id)?.email ?? null,
     last_sign_in_at: authById.get(row.id)?.lastSignInAt ?? null,
   }));

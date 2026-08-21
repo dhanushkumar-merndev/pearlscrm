@@ -2,6 +2,7 @@
 
 import { Check, Circle, CircleDashed, Scissors } from "lucide-react";
 
+import { CaseEditRequestsCard } from "@/components/cases/case-edit-requests-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,9 +18,14 @@ import type { CaseDetail } from "@/server/queries/cases";
  */
 export function CaseOverviewTab({
   detail,
+  currentUserId,
+  showReview,
   onNavigate,
 }: {
   detail: CaseDetail;
+  currentUserId: string;
+  /** The expert review tab exists only for the reviewing administrator. */
+  showReview: boolean;
   onNavigate: (tab: string) => void;
 }) {
   const { summary, completion } = detail;
@@ -64,6 +70,11 @@ export function CaseOverviewTab({
             <Timeline detail={detail} />
           </CardContent>
         </Card>
+
+        <CaseEditRequestsCard
+          requests={detail.editRequests}
+          currentUserId={currentUserId}
+        />
       </div>
 
       <Card className="lg:sticky lg:top-20 lg:self-start">
@@ -121,12 +132,17 @@ export function CaseOverviewTab({
             <Button variant="outline" size="sm" onClick={() => onNavigate("before")}>
               Before images
             </Button>
+            <Button variant="outline" size="sm" onClick={() => onNavigate("after")}>
+              After images
+            </Button>
             <Button variant="outline" size="sm" onClick={() => onNavigate("notes")}>
               Case notes
             </Button>
-            <Button variant="outline" size="sm" onClick={() => onNavigate("review")}>
-              Expert review
-            </Button>
+            {showReview ? (
+              <Button variant="outline" size="sm" onClick={() => onNavigate("review")}>
+                Expert review
+              </Button>
+            ) : null}
           </div>
         </CardContent>
       </Card>
@@ -151,6 +167,8 @@ function Timeline({ detail }: { detail: CaseDetail }) {
   const standardViews = detail.summary.standard_view_count;
   const beforeResolved =
     (detail.summary.before_uploaded_count ?? 0) + (detail.summary.before_not_available_count ?? 0);
+  const afterResolved =
+    (detail.summary.after_uploaded_count ?? 0) + (detail.summary.after_not_available_count ?? 0);
 
   return (
     <ol className="relative space-y-6 border-l pl-6">
@@ -168,6 +186,16 @@ function Timeline({ detail }: { detail: CaseDetail }) {
             : `${beforeResolved} of ${standardViews} views resolved`
         }
         complete={beforeResolved >= standardViews}
+      />
+
+      <TimelineEntry
+        title="After"
+        meta={
+          afterResolved >= standardViews
+            ? "Images complete"
+            : `${afterResolved} of ${standardViews} views resolved`
+        }
+        complete={afterResolved >= standardViews}
       />
 
       {followups.length === 0 ? (

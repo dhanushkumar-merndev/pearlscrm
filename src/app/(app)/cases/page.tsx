@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 
 import { PageHeader } from "@/components/app/page-header";
+import { RealtimeRefresh } from "@/components/app/realtime-refresh";
 import { CasesFilters } from "@/components/cases/cases-filters";
 import { CasesTable } from "@/components/cases/cases-table";
 import { Button } from "@/components/ui/button";
@@ -21,6 +22,11 @@ export default async function CasesPage({ searchParams }: PageProps<"/cases">) {
 
   return (
     <>
+      <RealtimeRefresh
+        channel="cases-list"
+        tables={[{ table: "cases" }, { table: "case_visits" }]}
+      />
+
       <PageHeader
         title="Cases"
         description="Search, filter and open clinical cases."

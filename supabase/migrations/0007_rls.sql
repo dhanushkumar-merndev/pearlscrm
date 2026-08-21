@@ -264,8 +264,8 @@ create policy case_reviews_select on public.case_reviews
 drop policy if exists case_reviews_update on public.case_reviews;
 create policy case_reviews_update on public.case_reviews
   for update to authenticated
-  using (public.has_role(array['ADMIN', 'SURGEON']) and public.case_is_writable(case_id))
-  with check (public.has_role(array['ADMIN', 'SURGEON']) and public.case_is_writable(case_id));
+  using (public.is_admin() and public.case_is_writable(case_id))
+  with check (public.is_admin() and public.case_is_writable(case_id));
 
 drop policy if exists case_review_revisions_select on public.case_review_revisions;
 create policy case_review_revisions_select on public.case_review_revisions
@@ -275,7 +275,7 @@ create policy case_review_revisions_select on public.case_review_revisions
 drop policy if exists case_review_revisions_insert on public.case_review_revisions;
 create policy case_review_revisions_insert on public.case_review_revisions
   for insert to authenticated
-  with check (public.has_role(array['ADMIN', 'SURGEON']));
+  with check (public.is_admin());
 
 -- ---------------------------------------------------------------------------
 -- audit
