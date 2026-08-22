@@ -23,10 +23,33 @@ const narrative = (max: number) =>
     .transform((value) => value.replace(/\r\n/g, "\n").trim())
     .pipe(z.string().max(max, `Must be ${max.toLocaleString()} characters or fewer`));
 
+/**
+ * Optional long-form text, normalised to `null` when there is nothing in it.
+ *
+ * `nullish`, not `optional`, and that distinction matters: these schemas are
+ * parsed twice — once in the browser through `zodResolver`, then again on the
+ * server, which must never trust the client's pass. The first parse turns `""`
+ * into `null`, so the second parse receives `null`. `.optional()` accepts only
+ * `undefined` and rejected it, which is why saving a case with an empty
+ * consent note failed with "please correct the highlighted fields" against a
+ * field that was not even on screen.
+ *
+ * The rule this encodes: every transform here must be idempotent, because its
+ * own output is its next input. `schemas.idempotent.test.ts` enforces it.
+ */
 const optionalNarrative = (max: number) =>
   narrative(max)
-    .optional()
-    .transform((value) => (value === "" ? null : (value ?? null)));
+    .nullish()
+    .transform((value) => (value == null || value === "" ? null : value));
+
+/** Optional short text, with the same idempotence requirement. */
+const optionalText = (max: number) =>
+  z
+    .string()
+    .trim()
+    .max(max)
+    .nullish()
+    .transform((value) => (value ? value : null));
 
 // --- Auth --------------------------------------------------------------------
 
@@ -91,12 +114,7 @@ export const createCaseSchema = z.object({
   procedureId: uuid,
   procedureTypeId: uuid,
   surgeryDate: isoDate,
-  followupAvailability: z
-    .string()
-    .trim()
-    .max(200)
-    .optional()
-    .transform((value) => (value ? value : null)),
+  followupAvailability: optionalText(200),
   consent: z.enum(["YES", "NO", "NOT_RECORDED"]).default("NOT_RECORDED"),
   consentNotes: optionalNarrative(2000),
   tagIds: z.array(uuid).max(20).default([]),
@@ -107,12 +125,7 @@ export const updateCaseSchema = z.object({
   procedureId: uuid,
   procedureTypeId: uuid,
   surgeryDate: isoDate,
-  followupAvailability: z
-    .string()
-    .trim()
-    .max(200)
-    .optional()
-    .transform((value) => (value ? value : null)),
+  followupAvailability: optionalText(200),
   tagIds: z.array(uuid).max(20).default([]),
   expectedVersion: z.coerce.number().int().min(1),
 });
@@ -303,7 +316,7 @@ export const decideEditRequestSchema = z.object({
     .string()
     .transform((value) => value.trim())
     .pipe(z.string().max(1000))
-    .optional()
+    .nullish()
     .transform((value) => (value ? value : null)),
   // How long the approval stays usable. Defaults to seven days.
   ttlHours: z.coerce.number().int().min(1).max(720).default(168),
