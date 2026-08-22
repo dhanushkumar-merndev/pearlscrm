@@ -90,12 +90,16 @@ async function validateUploadContext(params: {
   if (visit.visit_type === "AFTER") await requireBeforeSubmitted(params.caseId);
 
   // A submitted image set is closed. Reopening it needs an administrator's
-  // approval, checked here rather than only in the UI.
-  await requireEditAccess(
-    params.user,
-    { scope: "VISIT_IMAGES", caseId: params.caseId, visitId: params.visitId },
-    visit.display_label,
-  );
+  // approval, checked here rather than only in the UI — unless the
+  // administrator has already asked for this very view to be retaken, which is
+  // that approval, given for this slot alone.
+  if (!(await isRephotoRequested(params.visitId, params.viewTypeId))) {
+    await requireEditAccess(
+      params.user,
+      { scope: "VISIT_IMAGES", caseId: params.caseId, visitId: params.visitId },
+      visit.display_label,
+    );
+  }
 
   const { data: viewType } = await supabase
     .from("image_view_types")
@@ -119,6 +123,27 @@ async function validateUploadContext(params: {
     visitLabel: visit.display_label,
     isReplacement: Boolean(existing?.current_version_id),
   };
+}
+
+/**
+ * True when the administrator has asked for this specific view to be retaken.
+ *
+ * A retake request is itself the permission to replace that photograph: the
+ * administrator has already looked at the phase and said what needs redoing, so
+ * making the doctor then raise an edit request for it would be asking twice for
+ * the same decision. It reopens that one slot and nothing else.
+ */
+async function isRephotoRequested(visitId: string, viewTypeId: string): Promise<boolean> {
+  const supabase = await createSupabaseServerClient();
+
+  const { data } = await supabase
+    .from("clinical_images")
+    .select("review_status")
+    .eq("visit_id", visitId)
+    .eq("view_type_id", viewTypeId)
+    .maybeSingle<{ review_status: string }>();
+
+  return data?.review_status === "REPHOTO_REQUESTED";
 }
 
 /**
@@ -535,11 +560,13 @@ export async function clearImageUnavailable(params: {
   if (!image) throw notFound("This image slot could not be found.");
   if (image.availability_status !== "NOT_AVAILABLE") return;
 
-  await requireEditAccess(params.user, {
-    scope: "VISIT_IMAGES",
-    caseId: image.case_id,
-    visitId: params.visitId,
-  });
+  if (!(await isRephotoRequested(params.visitId, params.viewTypeId))) {
+    await requireEditAccess(params.user, {
+      scope: "VISIT_IMAGES",
+      caseId: image.case_id,
+      visitId: params.visitId,
+    });
+  }
 
   const { error } = await supabase
     .from("clinical_images")

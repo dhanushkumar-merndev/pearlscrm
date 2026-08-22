@@ -29,7 +29,9 @@ export const STORAGE_SETTINGS_KEY = "storage.plan";
  */
 export const TIGRIS_FREE_TIER_BYTES = 5 * 1024 ** 3;
 export const TIGRIS_DEFAULT_RATE_PER_GB_MONTH = 0.02;
-export const TIGRIS_CONSOLE_URL = "https://console.tigris.dev";
+// Tigris moved the dashboard here from console.tigris.dev, which now only
+// serves a redirect notice.
+export const TIGRIS_CONSOLE_URL = "https://console.storage.dev";
 
 export type StoragePlan = {
   /** Bytes included before storage is billed. */

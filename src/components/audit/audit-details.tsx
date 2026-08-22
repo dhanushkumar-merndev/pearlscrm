@@ -70,6 +70,10 @@ function renderValue(key: string, value: unknown): string | null {
     // A `{ from, to }` change pair, the common shape written by `diffForAudit`.
     const record = value as Record<string, unknown>;
     if ("from" in record || "to" in record) {
+      // A null `from` means the writer is describing the change rather than
+      // quoting the old value — redacted clinical narrative does this. Rendering
+      // it as "empty → rewritten" would claim the field had been blank.
+      if (record.from === null || record.from === undefined) return scalar(record.to);
       return `${scalar(record.from)} → ${scalar(record.to)}`;
     }
 

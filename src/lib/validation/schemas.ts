@@ -66,6 +66,11 @@ export const updateStoragePlanSchema = z.object({
   currency: z.string().trim().toUpperCase().length(3),
 });
 
+export const addReviewCommentSchema = z.object({
+  caseId: uuid,
+  body: narrative(4000).pipe(z.string().min(1, "Write something before sending")),
+});
+
 export const pageMasterValuesSchema = z.object({
   table: masterTableSchema,
   query: z.string().max(200).optional().default(""),
@@ -225,6 +230,27 @@ export const removeImageSchema = z.object({
   caseId: uuid,
   visitId: uuid,
   viewTypeId: uuid,
+});
+
+/**
+ * One administrator review covering every photograph in a phase.
+ *
+ * A retake request must carry a reason — "take it again" with no explanation is
+ * not actionable, and the database enforces the same rule.
+ */
+export const reviewVisitImagesSchema = z.object({
+  caseId: uuid,
+  visitId: uuid,
+  decisions: z
+    .array(
+      z.object({
+        clinicalImageId: uuid,
+        status: z.enum(["APPROVED", "REPHOTO_REQUESTED"]),
+        note: z.string().trim().max(500).optional(),
+      }),
+    )
+    .min(1, "Review at least one image")
+    .max(50),
 });
 
 /**

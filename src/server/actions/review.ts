@@ -118,8 +118,11 @@ export async function updateReview(
           ...(existing.final_assessment !== updated.final_assessment
             ? {
                 final_assessment: {
-                  from: describeLength(existing.final_assessment),
-                  to: describeLength(updated.final_assessment),
+                  from: null,
+                  to: describeAssessmentChange(
+                    existing.final_assessment,
+                    updated.final_assessment,
+                  ),
                 },
               }
             : {}),
@@ -135,8 +138,21 @@ export async function updateReview(
   });
 }
 
-/** Describes clinical narrative by size so the log never quotes it. */
-function describeLength(value: string | null): string {
-  if (!value) return "empty";
-  return `[${value.length} characters]`;
+/**
+ * Describes what happened to the assessment without quoting it.
+ *
+ * The text itself is clinical narrative and stays out of `audit_logs`, which
+ * has a different access profile from the case (AGENTS.md §24, §50). A
+ * character count honoured that rule but told a reader nothing they could act
+ * on — "9 characters → 12 characters" is not a fact about the case. This says
+ * what changed; the previous wording is retained in full in
+ * `case_review_revisions`, and the Expert Review tab shows it.
+ */
+function describeAssessmentChange(before: string | null, after: string | null): string {
+  const had = Boolean(before?.trim());
+  const has = Boolean(after?.trim());
+
+  if (!had && has) return "written";
+  if (had && !has) return "cleared";
+  return "rewritten";
 }

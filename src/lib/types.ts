@@ -32,6 +32,24 @@ export const EDIT_REQUEST_STATUSES = [
 export type EditRequestStatus = (typeof EDIT_REQUEST_STATUSES)[number];
 
 export const IMAGE_AVAILABILITY = ["UPLOADED", "MISSING", "NOT_AVAILABLE"] as const;
+
+/**
+ * Where one photograph stands with the reviewing administrator.
+ *
+ * Distinct from availability: availability says whether an image exists,
+ * this says whether anyone competent has looked at it.
+ */
+export const IMAGE_REVIEW_STATUSES = ["PENDING", "APPROVED", "REPHOTO_REQUESTED"] as const;
+export type ImageReviewStatus = (typeof IMAGE_REVIEW_STATUSES)[number];
+
+/** Derived from the slots, never stored. See `visit_image_review_status`. */
+export const VISIT_REVIEW_STATUSES = [
+  "NOT_SUBMITTED",
+  "PENDING",
+  "CHANGES_REQUESTED",
+  "APPROVED",
+] as const;
+export type VisitReviewStatus = (typeof VISIT_REVIEW_STATUSES)[number];
 export type ImageAvailability = (typeof IMAGE_AVAILABILITY)[number];
 
 export const REVIEW_STATUSES = ["PENDING", "IN_REVIEW", "COMPLETED"] as const;
@@ -178,6 +196,10 @@ export type ClinicalImage = {
   not_available_reason: string | null;
   not_available_by: string | null;
   not_available_at: string | null;
+  review_status: ImageReviewStatus;
+  review_note: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -188,6 +210,7 @@ export type ImageSlot = {
   image: ClinicalImage | null;
   currentVersion: ClinicalImageVersion | null;
   uploadedByName: string | null;
+  reviewedByName: string | null;
 };
 
 export type CaseNotes = {
@@ -238,6 +261,21 @@ export type CaseConsent = {
   created_at: string;
 };
 
+export type CaseReviewComment = {
+  id: string;
+  case_id: string;
+  case_review_id: string;
+  author_id: string;
+  body: string;
+  created_at: string;
+};
+
+/** A comment with the author's name resolved for display. */
+export type CaseReviewCommentWithAuthor = CaseReviewComment & {
+  author_name: string;
+  author_role: RoleCode | null;
+};
+
 export type CaseReview = {
   id: string;
   case_id: string;
@@ -266,8 +304,12 @@ export type CaseCompletionFacts = {
   case_information: boolean;
   before_images: boolean;
   before_images_resolved: number;
+  before_images_approved: number;
+  before_images_review: VisitReviewStatus;
   after_images: boolean;
   after_images_resolved: number;
+  after_images_approved: number;
+  after_images_review: VisitReviewStatus;
   standard_view_count: number;
   followups: boolean;
   followup_count: number;

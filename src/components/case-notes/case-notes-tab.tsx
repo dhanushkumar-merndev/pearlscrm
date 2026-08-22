@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Controller, useFieldArray, useForm, type UseFormReturn } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -17,6 +18,7 @@ import type { z } from "zod";
 import {
   DndContext,
   closestCenter,
+  MeasuringStrategy,
   KeyboardSensor,
   PointerSensor,
   useSensor,
@@ -104,6 +106,11 @@ export function CaseNotesTab({
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [requesting, setRequesting] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
+
+  // `document` does not exist during the server render; the overlay portal
+  // waits for the client.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -341,6 +348,7 @@ export function CaseNotesTab({
             sensors={sensors}
             collisionDetection={closestCenter}
             modifiers={[restrictToVerticalAxis]}
+            measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
             onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
             onDragCancel={handleDragCancel}
@@ -349,7 +357,7 @@ export function CaseNotesTab({
               items={changes.fields.map((field) => field.id)}
               strategy={verticalListSortingStrategy}
             >
-              <ul className="space-y-2">
+              <ul className="flex flex-col gap-2">
                 {changes.fields.map((field, index) => (
                   <SortableChangeRow
                     key={field.id}
@@ -363,25 +371,37 @@ export function CaseNotesTab({
               </ul>
             </SortableContext>
 
-            <DragOverlay dropAnimation={dropAnimationConfig}>
-              {activeId && activeIndex >= 0 ? (
-                <div className="bg-background/95 border-primary/40 ring-primary/20 flex items-start gap-2.5 rounded-lg border p-1 shadow-2xl ring-2 backdrop-blur-md">
-                  <div className="text-primary bg-primary/10 mt-1 flex size-8 shrink-0 cursor-grabbing items-center justify-center rounded-md">
-                    <GripVertical className="size-4" aria-hidden />
-                  </div>
-                  <div className="flex-1">
-                    <Input
-                      readOnly
-                      tabIndex={-1}
-                      value={form.getValues(`changesPerformed.${activeIndex}.description`) || ""}
-                      placeholder="e.g. Dorsal reduction"
-                      className="bg-background shadow-xs pointer-events-none"
-                    />
-                  </div>
-                  <div className="size-9 shrink-0" />
-                </div>
-              ) : null}
-            </DragOverlay>
+            {/* Portalled to the body on purpose. `DragOverlay` positions itself
+                with `position: fixed`, and any ancestor with a transform — the
+                sidebar layout has one — becomes the containing block for that,
+                which left the dragged row floating well away from the list and
+                sized to the wrong element. */}
+            {mounted
+              ? createPortal(
+                  <DragOverlay dropAnimation={dropAnimationConfig}>
+                    {activeId && activeIndex >= 0 ? (
+                      <div className="bg-background border-border flex items-start gap-2.5 rounded-lg border p-1 shadow-md">
+                        <div className="text-muted-foreground mt-1 flex size-8 shrink-0 cursor-grabbing items-center justify-center rounded-md">
+                          <GripVertical className="size-4" aria-hidden />
+                        </div>
+                        <div className="flex-1">
+                          <Input
+                            readOnly
+                            tabIndex={-1}
+                            value={
+                              form.getValues(`changesPerformed.${activeIndex}.description`) || ""
+                            }
+                            placeholder="e.g. Dorsal reduction"
+                            className="bg-background pointer-events-none"
+                          />
+                        </div>
+                        <div className="size-9 shrink-0" />
+                      </div>
+                    ) : null}
+                  </DragOverlay>,
+                  document.body,
+                )
+              : null}
           </DndContext>
 
           {editable ? (
@@ -678,9 +698,9 @@ function SortableChangeRow({
       ref={setNodeRef}
       style={style}
       className={cn(
-        "group relative flex items-start gap-2.5 rounded-lg border border-transparent p-1 transition-[background-color,border-color,opacity,shadow] duration-150",
+        "group relative flex items-start gap-2.5 rounded-lg border border-transparent p-1",
         isDragging
-          ? "border-primary/40 bg-primary/5 opacity-30 border-dashed shadow-inner"
+          ? "border-border border-dashed bg-muted/30 opacity-60"
           : "hover:border-border/40 hover:bg-muted/20"
       )}
     >
@@ -691,7 +711,7 @@ function SortableChangeRow({
           {...listeners}
           title="Drag to reorder"
           aria-label={`Drag change ${index + 1} to reorder`}
-          className="text-muted-foreground/60 hover:text-foreground hover:bg-muted active:text-foreground active:bg-muted active:cursor-grabbing mt-1 flex size-8 shrink-0 cursor-grab items-center justify-center rounded-md transition-all duration-150 active:scale-95 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+          className="text-muted-foreground/60 hover:text-foreground hover:bg-muted active:text-foreground active:bg-muted active:cursor-grabbing focus-visible:ring-ring mt-1 flex size-8 shrink-0 cursor-grab items-center justify-center rounded-md transition-colors duration-150 focus-visible:ring-2 focus-visible:outline-none"
         >
           <GripVertical className="size-4" aria-hidden />
         </button>

@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import {
+  Check,
   CircleSlash,
   History,
   ImageOff,
@@ -33,6 +34,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Progress } from "@/components/ui/progress";
+import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatTimestamp } from "@/lib/dates";
 import { ALLOWED_IMAGE_MIME_TYPES, formatBytes, validateUploadCandidate } from "@/lib/images";
@@ -56,6 +58,9 @@ export function ImageSlotCard({
   maxImageBytes,
   onStage,
   onOpenViewer,
+  reviewing = false,
+  decision,
+  onDecide,
 }: {
   slot: ImageSlot;
   editing: boolean;
@@ -67,6 +72,11 @@ export function ImageSlotCard({
   maxImageBytes: number;
   onStage: (change: StagedChange | null) => void;
   onOpenViewer: () => void;
+  /** True while an administrator is deciding on this phase. */
+  reviewing?: boolean;
+  /** The decision made in this session, before it is sent. */
+  decision?: SlotDecision;
+  onDecide?: (decision: SlotDecision | null) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -224,7 +234,20 @@ export function ImageSlotCard({
               Unsaved
             </Badge>
           ) : null}
+          <ReviewBadge slot={slot} />
         </div>
+
+        {/* The reason a retake was asked for, shown to whoever has to act on
+            it. Kept out of the audit log, which is why it lives here. */}
+        {slot.image?.review_status === "REPHOTO_REQUESTED" && slot.image.review_note ? (
+          <p className="text-xs text-amber-700 dark:text-amber-400">
+            <span className="font-medium">Retake requested:</span> {slot.image.review_note}
+          </p>
+        ) : null}
+
+        {reviewing && onDecide ? (
+          <ReviewControls slot={slot} decision={decision} onDecide={onDecide} />
+        ) : null}
 
         {staged ? (
           <p className="text-muted-foreground text-xs">
@@ -293,5 +316,121 @@ export function ImageSlotCard({
         />
       ) : null}
     </Card>
+  );
+}
+
+
+/** What an administrator has decided about one photograph, before sending. */
+export type SlotDecision = {
+  clinicalImageId: string;
+  status: "APPROVED" | "REPHOTO_REQUESTED";
+  note: string;
+};
+
+/**
+ * The standing review state of a slot.
+ *
+ * Deliberately silent while a phase is unreviewed: a "Pending" badge on all six
+ * cards is noise on the screen of the person who has not submitted yet.
+ */
+function ReviewBadge({ slot }: { slot: ImageSlot }) {
+  const status = slot.image?.review_status;
+
+  if (status === "APPROVED") {
+    return (
+      <Badge
+        variant="outline"
+        className="gap-1 border-emerald-500/60 text-emerald-700 dark:text-emerald-400"
+      >
+        <Check className="size-3" aria-hidden />
+        Approved
+      </Badge>
+    );
+  }
+
+  if (status === "REPHOTO_REQUESTED") {
+    return (
+      <Badge
+        variant="outline"
+        className="gap-1 border-amber-500/60 text-amber-700 dark:text-amber-400"
+      >
+        <RotateCcw className="size-3" aria-hidden />
+        Retake needed
+      </Badge>
+    );
+  }
+
+  return null;
+}
+
+/**
+ * Approve, or ask for a retake with a reason.
+ *
+ * The reason is required — the database rejects a retake request without one —
+ * so the field appears as soon as retake is chosen rather than failing on send.
+ */
+function ReviewControls({
+  slot,
+  decision,
+  onDecide,
+}: {
+  slot: ImageSlot;
+  decision: SlotDecision | undefined;
+  onDecide: (decision: SlotDecision | null) => void;
+}) {
+  const imageId = slot.image?.id;
+
+  if (!imageId) {
+    return (
+      <p className="text-muted-foreground text-xs">
+        Nothing to review — no image and no availability decision.
+      </p>
+    );
+  }
+
+  const set = (status: "APPROVED" | "REPHOTO_REQUESTED") => {
+    if (decision?.status === status) {
+      onDecide(null);
+      return;
+    }
+    onDecide({ clinicalImageId: imageId, status, note: decision?.note ?? "" });
+  };
+
+  return (
+    <div className="w-full space-y-2 pt-1">
+      <div className="flex flex-wrap gap-1.5">
+        <Button
+          type="button"
+          size="sm"
+          variant={decision?.status === "APPROVED" ? "default" : "outline"}
+          onClick={() => set("APPROVED")}
+        >
+          <Check aria-hidden />
+          Approve
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant={decision?.status === "REPHOTO_REQUESTED" ? "default" : "outline"}
+          onClick={() => set("REPHOTO_REQUESTED")}
+        >
+          <RotateCcw aria-hidden />
+          Retake
+        </Button>
+      </div>
+
+      {decision?.status === "REPHOTO_REQUESTED" ? (
+        <Textarea
+          rows={2}
+          value={decision.note}
+          maxLength={500}
+          placeholder="What needs to change? e.g. head tilted, background visible"
+          aria-label={`Reason a retake is needed for ${slot.viewType.display_name}`}
+          onChange={(event) =>
+            onDecide({ ...decision, note: event.target.value })
+          }
+        />
+      ) : null}
+    </div>
   );
 }

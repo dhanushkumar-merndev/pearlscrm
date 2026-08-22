@@ -1,4 +1,4 @@
-import type { CaseCompletionFacts } from "@/lib/types";
+import type { CaseCompletionFacts, VisitReviewStatus } from "@/lib/types";
 
 /**
  * Case completion.
@@ -32,7 +32,12 @@ export function buildChecklist(facts: CaseCompletionFacts): ChecklistItem[] {
       label: "Before images",
       done: facts.before_images,
       required: true,
-      detail: `${facts.before_images_resolved} of ${facts.standard_view_count} standard views uploaded or marked unavailable`,
+      detail: imageDetail(
+        facts.before_images_resolved,
+        facts.before_images_approved,
+        facts.standard_view_count,
+        facts.before_images_review,
+      ),
     },
     {
       key: "after_images",
@@ -41,7 +46,12 @@ export function buildChecklist(facts: CaseCompletionFacts): ChecklistItem[] {
       // Informational: the post-operative set is often still being collected
       // when the case is otherwise complete for its current stage.
       required: false,
-      detail: `${facts.after_images_resolved} of ${facts.standard_view_count} standard views uploaded or marked unavailable`,
+      detail: imageDetail(
+        facts.after_images_resolved,
+        facts.after_images_approved,
+        facts.standard_view_count,
+        facts.after_images_review,
+      ),
     },
     {
       key: "case_notes",
@@ -105,4 +115,34 @@ export function followupMaturity(facts: CaseCompletionFacts): {
   count: number;
 } {
   return { hasFollowups: facts.followups, count: facts.followup_count };
+}
+
+
+/**
+ * Why a phase is still outstanding.
+ *
+ * Completion means signed off, not merely uploaded, so "6 of 6" on its own
+ * would read as done while the administrator has not looked at them yet. The
+ * detail line names whichever step is actually blocking.
+ */
+function imageDetail(
+  resolved: number,
+  approved: number,
+  total: number,
+  review: VisitReviewStatus,
+): string {
+  if (resolved < total) {
+    return `${resolved} of ${total} standard views uploaded or marked unavailable`;
+  }
+
+  switch (review) {
+    case "NOT_SUBMITTED":
+      return `All ${total} views ready — save the phase to send it for review`;
+    case "PENDING":
+      return `All ${total} views submitted — awaiting the administrator's review`;
+    case "CHANGES_REQUESTED":
+      return `${total - approved} of ${total} views need retaking`;
+    case "APPROVED":
+      return `All ${total} standard views reviewed and approved`;
+  }
 }

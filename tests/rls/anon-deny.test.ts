@@ -54,6 +54,7 @@ const CLINICAL_TABLES = [
   "notifications",
   "case_access_grants",
   "app_settings",
+  "case_review_comments",
 ] as const;
 
 /** Master data is reference vocabulary, but still not public. */
@@ -99,6 +100,10 @@ const PRIVILEGED_RPCS: { name: string; args: Record<string, unknown> }[] = [
   { name: "set_master_value_active", args: { p_table: "procedures", p_id: NIL, p_is_active: false, p_actor: NIL } },
 
   { name: "notify_admins", args: { p_type: "rls_deny_test", p_title: "rls deny test", p_body: "rls deny test", p_case_id: null, p_visit_id: null, p_edit_request_id: null, p_actor: NIL } },
+  { name: "notify_user", args: { p_recipient: NIL, p_type: "rls_deny_test", p_title: "rls deny test", p_body: "rls deny test", p_case_id: null, p_visit_id: null, p_actor: NIL } },
+
+  { name: "review_visit_images", args: { p_visit_id: NIL, p_decisions: [], p_actor: NIL } },
+  { name: "add_review_comment", args: { p_case_id: NIL, p_body: "rls deny test", p_actor: NIL } },
 ];
 
 let anon: SupabaseClient;

@@ -4,11 +4,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   CheckCircle2,
+  ClipboardCheck,
   Images,
   TriangleAlert,
   Lock,
   Pencil,
   RefreshCw,
+  RotateCcw,
   Save,
   ShieldCheck,
   ShieldQuestion,
@@ -17,7 +19,7 @@ import {
 import { toast } from "sonner";
 
 import { RequestEditDialog } from "@/components/cases/request-edit-dialog";
-import { ImageSlotCard } from "@/components/clinical-images/image-slot-card";
+import { ImageSlotCard, type SlotDecision } from "@/components/clinical-images/image-slot-card";
 import { ImageViewerDialog } from "@/components/clinical-images/image-viewer-dialog";
 import {
   projectedResolvedCount,
@@ -46,6 +48,7 @@ import { formatClinicDate, formatTimestamp } from "@/lib/dates";
 import { formatBytes } from "@/lib/images";
 import { can } from "@/lib/permissions";
 import { uploadClinicalImage } from "@/lib/upload-client";
+import { reviewVisitImagesAction } from "@/server/actions/image-review";
 import { getVisitImagePanelData } from "@/server/actions/image-slots";
 import { clearSlotUnavailable, markSlotUnavailable, removeSlotImage } from "@/server/actions/images";
 import { submitVisitImages } from "@/server/actions/visits";
@@ -98,6 +101,13 @@ export function VisitImagesPanel({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [requesting, setRequesting] = useState(false);
+
+  // Administrator review of a submitted phase. Decisions are held locally until
+  // the whole phase is sent, so the review lands as one judgement rather than
+  // six independent ones the doctor gets six notifications about.
+  const [reviewing, setReviewing] = useState(false);
+  const [decisions, setDecisions] = useState<Record<string, SlotDecision>>({});
+  const [sendingReview, setSendingReview] = useState(false);
   const [confirmIncomplete, setConfirmIncomplete] = useState(false);
 
   // Object URLs are revoked explicitly; a ref keeps them reachable from the
@@ -368,6 +378,64 @@ export function VisitImagesPanel({
   // then counts as resolved, and the warning is about the ones left blank.
   const unresolved = Math.max(0, viewTypes.length - resolved);
 
+  // Only an administrator reviews, only once the phase has been submitted, and
+  // only while there is something still undecided.
+  const reviewable = (slots ?? []).filter((slot) => slot.image !== null);
+  const decided = reviewable.filter(
+    (slot) => slot.image && slot.image.review_status !== "PENDING",
+  ).length;
+  const retakesOutstanding = reviewable.filter(
+    (slot) => slot.image?.review_status === "REPHOTO_REQUESTED",
+  ).length;
+  const mayReview = role === "ADMIN" && locked && !readOnly && reviewable.length > 0;
+  const reviewComplete = reviewable.length > 0 && decided === reviewable.length && retakesOutstanding === 0;
+
+  // A retake request reopens the slots it names and nothing else. The doctor
+  // needs no edit grant for them — the administrator has already decided this
+  // phase must change — so the panel opens for editing on that basis alone,
+  // and each card decides for itself whether it is one of the named slots.
+  const retakeOnly = locked && !mayEditNow && retakesOutstanding > 0;
+  const mayEnterEdit = mayUpload && (mayEditNow || retakesOutstanding > 0);
+
+  const decisionList = Object.values(decisions);
+  const missingNote = decisionList.some(
+    (decision) => decision.status === "REPHOTO_REQUESTED" && decision.note.trim() === "",
+  );
+
+  const sendReview = async () => {
+    setSendingReview(true);
+    setSaveError(null);
+
+    const result = await reviewVisitImagesAction({
+      caseId,
+      visitId: visit.id,
+      decisions: decisionList.map((decision) => ({
+        clinicalImageId: decision.clinicalImageId,
+        status: decision.status,
+        ...(decision.note.trim() ? { note: decision.note.trim() } : {}),
+      })),
+    });
+
+    setSendingReview(false);
+
+    if (!result.ok) {
+      setSaveError(result.error.message);
+      return;
+    }
+
+    const retakes = decisionList.filter((d) => d.status === "REPHOTO_REQUESTED").length;
+    toast.success(
+      retakes > 0
+        ? `${retakes} view${retakes === 1 ? "" : "s"} sent back for a retake.`
+        : "Images approved.",
+    );
+
+    setDecisions({});
+    setReviewing(false);
+    await load({ fresh: true });
+    router.refresh();
+  };
+
   return (
     <div className="space-y-4">
       <Card>
@@ -417,9 +485,58 @@ export function VisitImagesPanel({
                   Saved at {formatTimestamp(savedAt)}
                 </p>
               ) : null}
+
+              {retakesOutstanding > 0 ? (
+                <p className="text-xs text-amber-700 dark:text-amber-400">
+                  {retakesOutstanding} view{retakesOutstanding === 1 ? "" : "s"} still to be
+                  retaken. Only those slots are open — the rest stay approved and locked.
+                  {retakeOnly && !editing
+                    ? " No approval request is needed — the retake was asked for. Save the phase when the new photograph is in to send it back for review."
+                    : ""}
+                </p>
+              ) : reviewComplete ? (
+                <p className="text-xs text-emerald-700 dark:text-emerald-400">
+                  All views approved.
+                </p>
+              ) : locked && role === "ADMIN" ? (
+                <p className="text-muted-foreground text-xs">
+                  {decided} of {reviewable.length} views reviewed.
+                </p>
+              ) : null}
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
+              {reviewing ? (
+                <>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={sendingReview}
+                    onClick={() => {
+                      setDecisions({});
+                      setReviewing(false);
+                    }}
+                  >
+                    <Undo2 aria-hidden />
+                    Cancel review
+                  </Button>
+
+                  <Button
+                    size="sm"
+                    disabled={sendingReview || decisionList.length === 0 || missingNote}
+                    onClick={() => void sendReview()}
+                  >
+                    {sendingReview ? <Spinner /> : <ClipboardCheck aria-hidden />}
+                    Send review ({decisionList.length})
+                  </Button>
+                </>
+              ) : mayReview && !editing ? (
+                <Button size="sm" variant="outline" onClick={() => setReviewing(true)}>
+                  <ClipboardCheck aria-hidden />
+                  {decided === 0 ? "Review images" : "Review again"}
+                </Button>
+              ) : null}
+
               {editing ? (
                 <>
                   {stagedCount > 0 ? (
@@ -448,6 +565,11 @@ export function VisitImagesPanel({
                 <Button size="sm" onClick={() => setEditing(true)}>
                   <Pencil aria-hidden />
                   Edit images
+                </Button>
+              ) : locked && mayEnterEdit && retakeOnly ? (
+                <Button size="sm" onClick={() => setEditing(true)}>
+                  <RotateCcw aria-hidden />
+                  Retake {retakesOutstanding} view{retakesOutstanding === 1 ? "" : "s"}
                 </Button>
               ) : locked && mayRequest && !mayEditNow && !awaiting ? (
                 <Button size="sm" variant="outline" onClick={() => setRequesting(true)}>
@@ -559,9 +681,27 @@ export function VisitImagesPanel({
               editing={editing}
               staged={staged[slot.viewType.id]}
               progress={progress[slot.viewType.id] ?? null}
-              maySelect={mayUpload}
-              mayMark={mayMark}
+              maySelect={
+                mayUpload && (!retakeOnly || slot.image?.review_status === "REPHOTO_REQUESTED")
+              }
+              mayMark={
+                mayMark && (!retakeOnly || slot.image?.review_status === "REPHOTO_REQUESTED")
+              }
               maxImageBytes={maxImageBytes}
+              reviewing={reviewing}
+              decision={slot.image ? decisions[slot.image.id] : undefined}
+              onDecide={(decision) =>
+                setDecisions((current) => {
+                  const id = slot.image?.id;
+                  if (!id) return current;
+                  if (!decision) {
+                    const { [id]: _dropped, ...rest } = current;
+                    void _dropped;
+                    return rest;
+                  }
+                  return { ...current, [id]: decision };
+                })
+              }
               onStage={(change) => stage(slot.viewType.id, change)}
               onOpenViewer={() => {
                 const index = uploadedSlots.findIndex(

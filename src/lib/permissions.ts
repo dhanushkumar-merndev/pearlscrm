@@ -35,6 +35,14 @@ export const PERMISSIONS = {
   // The expert review is Dr. Praveen's, and Dr. Praveen holds the ADMIN role.
   // Nobody else reads or writes it: the tab is not rendered for other roles and
   // the server refuses the write regardless.
+  // Reviewing submitted photographs is the same judgement as the expert
+  // review, and belongs to the same person.
+  "image:review": ["ADMIN"],
+
+  // The assessment stays single-authored; the discussion around it does not.
+  // A read-only account reads the thread but does not join it.
+  "review:comment": ["ADMIN", "DOCTOR"],
+
   "review:read": ["ADMIN"],
   "review:update": ["ADMIN"],
   "review:complete": ["ADMIN"],

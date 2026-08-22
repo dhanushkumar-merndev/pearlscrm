@@ -20,6 +20,7 @@ import type {
   ImageSlot,
   ImageViewType,
   MasterValue,
+  VisitReviewStatus,
 } from "@/lib/types";
 
 /**
@@ -228,8 +229,12 @@ function emptyCompletion(): CaseCompletionFacts {
     case_information: false,
     before_images: false,
     before_images_resolved: 0,
+    before_images_approved: 0,
+    before_images_review: "NOT_SUBMITTED",
     after_images: false,
     after_images_resolved: 0,
+    after_images_approved: 0,
+    after_images_review: "NOT_SUBMITTED",
     standard_view_count: 6,
     followups: false,
     followup_count: 0,
@@ -276,6 +281,23 @@ export async function getVisitImageSlots(visitId: string): Promise<ImageSlot[]> 
   let versions: ClinicalImageVersion[] = [];
   let uploaderNames = new Map<string, string>();
 
+  // Reviewer names come from the slots directly — a slot can carry a review
+  // decision without holding a current version (a view marked unavailable).
+  const reviewerIds = [
+    ...new Set(imageList.map((i) => i.reviewed_by).filter((id): id is string => Boolean(id))),
+  ];
+  let reviewerNames = new Map<string, string>();
+
+  if (reviewerIds.length > 0) {
+    const { data: reviewers } = await supabase
+      .from("profiles")
+      .select("id, display_name")
+      .in("id", reviewerIds)
+      .returns<{ id: string; display_name: string }[]>();
+
+    reviewerNames = new Map((reviewers ?? []).map((p) => [p.id, p.display_name]));
+  }
+
   if (versionIds.length > 0) {
     const { data } = await supabase
       .from("clinical_image_versions")
@@ -313,8 +335,23 @@ export async function getVisitImageSlots(visitId: string): Promise<ImageSlot[]> 
       uploadedByName: currentVersion?.uploaded_by
         ? (uploaderNames.get(currentVersion.uploaded_by) ?? null)
         : null,
+      reviewedByName: image?.reviewed_by ? (reviewerNames.get(image.reviewed_by) ?? null) : null,
     };
   });
+}
+
+/**
+ * Where a phase stands with the reviewing administrator.
+ *
+ * Derived in PostgreSQL from the slot rows rather than recomputed here, so the
+ * UI, the completion checklist and the upload guard cannot disagree about it.
+ */
+export async function getVisitReviewStatus(visitId: string): Promise<VisitReviewStatus> {
+  const supabase = await createSupabaseServerClient();
+
+  const { data } = await supabase.rpc("visit_image_review_status", { p_visit_id: visitId });
+
+  return (data as VisitReviewStatus | null) ?? "NOT_SUBMITTED";
 }
 
 /** Full replacement history for one slot, newest first. */

@@ -13,7 +13,12 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { can } from "@/lib/permissions";
 import type { CaseDetail } from "@/server/queries/cases";
-import type { EditAccess, ImageViewType, RoleCode } from "@/lib/types";
+import type {
+  CaseReviewCommentWithAuthor,
+  EditAccess,
+  ImageViewType,
+  RoleCode,
+} from "@/lib/types";
 
 /**
  * Case navigation stays inside tabs rather than expanding the sidebar.
@@ -25,6 +30,7 @@ export function CaseTabs({
   currentUserId,
   notesEditAccess,
   maxImageBytes,
+  reviewComments,
   initialTab = "overview",
 }: {
   detail: CaseDetail;
@@ -33,6 +39,7 @@ export function CaseTabs({
   currentUserId: string;
   notesEditAccess: EditAccess;
   maxImageBytes: number;
+  reviewComments: CaseReviewCommentWithAuthor[];
   initialTab?: string;
 }) {
   const beforeVisit = detail.visits.find((visit) => visit.visit_type === "BEFORE") ?? null;
@@ -150,7 +157,12 @@ export function CaseTabs({
 
       {showReview ? (
         <TabsContent value="review">
-          <CaseReviewTab detail={detail} role={role} />
+          <CaseReviewTab
+            detail={detail}
+            role={role}
+            comments={reviewComments}
+            currentUserId={currentUserId}
+          />
         </TabsContent>
       ) : null}
 

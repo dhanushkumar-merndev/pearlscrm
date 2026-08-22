@@ -288,11 +288,25 @@ export async function submitVisitImages(
       }
     }
 
-    const grantId = await requireEditAccess(
-      user,
-      { scope: "VISIT_IMAGES", caseId: data.caseId, visitId: data.visitId },
-      visit.display_label,
-    );
+    // Retaking a photograph the administrator asked for is not a reopening: the
+    // decision to change this phase has already been made, by them. Requiring an
+    // edit grant on top would make the doctor ask permission to do the thing
+    // they were just told to do.
+    const { data: pendingRetake } = await supabase
+      .from("clinical_images")
+      .select("id")
+      .eq("visit_id", data.visitId)
+      .eq("review_status", "REPHOTO_REQUESTED")
+      .limit(1)
+      .maybeSingle<{ id: string }>();
+
+    const grantId = pendingRetake
+      ? null
+      : await requireEditAccess(
+          user,
+          { scope: "VISIT_IMAGES", caseId: data.caseId, visitId: data.visitId },
+          visit.display_label,
+        );
 
     const admin = createSupabaseAdminClient();
 

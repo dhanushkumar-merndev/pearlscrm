@@ -15,8 +15,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { formatTimestamp } from "@/lib/dates";
 import { can } from "@/lib/permissions";
 import { updateReview } from "@/server/actions/review";
+import { ReviewDiscussion } from "@/components/cases/review-discussion";
 import type { CaseDetail } from "@/server/queries/cases";
-import type { ReviewStatus, RoleCode } from "@/lib/types";
+import type { CaseReviewCommentWithAuthor, ReviewStatus, RoleCode } from "@/lib/types";
 
 /**
  * Expert review: the reviewing administrator's final assessment.
@@ -34,7 +35,17 @@ import type { ReviewStatus, RoleCode } from "@/lib/types";
  * COMPLETED, snapshots the previous text into the revision history, and audits
  * the edit.
  */
-export function CaseReviewTab({ detail, role }: { detail: CaseDetail; role: RoleCode }) {
+export function CaseReviewTab({
+  detail,
+  role,
+  comments,
+  currentUserId,
+}: {
+  detail: CaseDetail;
+  role: RoleCode;
+  comments: CaseReviewCommentWithAuthor[];
+  currentUserId: string;
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [assessment, setAssessment] = useState(detail.review?.final_assessment ?? "");
@@ -77,6 +88,7 @@ export function CaseReviewTab({ detail, role }: { detail: CaseDetail; role: Role
   };
 
   return (
+    <div className="space-y-6">
     <div className="grid gap-6 lg:grid-cols-3">
       <Card className="lg:col-span-2">
         <CardHeader>
@@ -217,6 +229,19 @@ export function CaseReviewTab({ detail, role }: { detail: CaseDetail; role: Role
           </p>
         </CardContent>
       </Card>
+    </div>
+
+    {/* Only once there is an assessment to discuss. Arguing with a blank
+        review is not a conversation anyone needs. */}
+    {status === "COMPLETED" ? (
+      <ReviewDiscussion
+        caseId={detail.summary.id}
+        initialComments={comments}
+        canComment={can(role, "review:comment")}
+        currentUserId={currentUserId}
+        archived={Boolean(detail.summary.archived_at)}
+      />
+    ) : null}
     </div>
   );
 }

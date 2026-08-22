@@ -6,6 +6,7 @@ import { CaseTabs } from "@/components/cases/case-tabs";
 import { requireUser } from "@/server/auth/session";
 import { getCaseDetail, listStandardViewTypes } from "@/server/queries/cases";
 import { listCaseAccessUsers } from "@/server/queries/case-access";
+import { getReviewComments } from "@/server/queries/review-comments";
 import { AppError } from "@/lib/errors";
 import { serverEnv } from "@/lib/env/server";
 import { can } from "@/lib/permissions";
@@ -54,12 +55,13 @@ export default async function CaseDetailPage({
     throw error;
   }
 
-  const [viewTypes, accessUsers, notesEditAccess] = await Promise.all([
+  const [viewTypes, accessUsers, notesEditAccess, reviewComments] = await Promise.all([
     listStandardViewTypes(),
     can(user.role, "case_access:manage")
       ? listCaseAccessUsers(caseId)
       : Promise.resolve(null),
     resolveEditAccess(user, { scope: "CASE_NOTES", caseId }),
+    getReviewComments(caseId),
   ]);
 
   return (
@@ -71,6 +73,7 @@ export default async function CaseDetailPage({
         role={user.role}
         currentUserId={user.id}
         notesEditAccess={notesEditAccess}
+        reviewComments={reviewComments}
         initialTab={initialTab}
         // Read server-side so the client validates against the real configured
         // limit rather than a duplicated constant.

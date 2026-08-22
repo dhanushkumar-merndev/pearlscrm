@@ -37,6 +37,7 @@ function slot(id: string, saved: Partial<ImageSlot["image"]> | null = null): Ima
       ? ({ id: saved.current_version_id } as ImageSlot["currentVersion"])
       : null,
     uploadedByName: null,
+  reviewedByName: null,
   };
 }
 
