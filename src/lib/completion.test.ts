@@ -7,8 +7,12 @@ const COMPLETE_FACTS: CaseCompletionFacts = {
   case_information: true,
   before_images: true,
   before_images_resolved: 6,
+  before_images_approved: 6,
+  before_images_review: "APPROVED",
   after_images: true,
   after_images_resolved: 6,
+  after_images_approved: 6,
+  after_images_review: "APPROVED",
   standard_view_count: 6,
   followups: true,
   followup_count: 2,
@@ -32,8 +36,10 @@ describe("buildChecklist", () => {
   });
 
   it("describes before-image progress from the resolved and total counts", () => {
-    const item = buildChecklist(COMPLETE_FACTS).find((entry) => entry.key === "before_images");
-    expect(item?.detail).toContain("6 of 6");
+    const item = buildChecklist({ ...COMPLETE_FACTS, before_images_resolved: 4 }).find(
+      (entry) => entry.key === "before_images",
+    );
+    expect(item?.detail).toContain("4 of 6");
   });
 
   it("reports the after phase without gating completion on it", () => {
@@ -72,8 +78,12 @@ describe("completionPercent", () => {
       case_information: false,
       before_images: false,
       before_images_resolved: 0,
+      before_images_approved: 6,
+      before_images_review: "APPROVED",
       after_images: false,
       after_images_resolved: 0,
+      after_images_approved: 6,
+      after_images_review: "APPROVED",
       standard_view_count: 6,
       followups: false,
       followup_count: 0,

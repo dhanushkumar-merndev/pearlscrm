@@ -14,6 +14,27 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import type { z } from "zod";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragOverlay,
+  defaultDropAnimationSideEffects,
+  type DragEndEvent,
+  type DragStartEvent,
+  type DropAnimation,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
+import { CSS } from "@dnd-kit/utilities";
 
 import { MasterDataCombobox } from "@/components/app/master-data-combobox";
 import { RequestEditDialog } from "@/components/cases/request-edit-dialog";
@@ -34,6 +55,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { can } from "@/lib/permissions";
+import { cn } from "@/lib/utils";
 import { updateCaseNotesSchema } from "@/lib/validation/schemas";
 import { updateCaseNotes } from "@/server/actions/notes";
 import type { CaseDetail } from "@/server/queries/cases";
@@ -56,6 +78,16 @@ type NotesForm = UseFormReturn<FormValues, unknown, ParsedValues>;
  * concurrent edit by another clinician surfaces as a conflict rather than
  * silently overwriting their work.
  */
+const dropAnimationConfig: DropAnimation = {
+  sideEffects: defaultDropAnimationSideEffects({
+    styles: {
+      active: {
+        opacity: "0.4",
+      },
+    },
+  }),
+};
+
 export function CaseNotesTab({
   detail,
   role,
@@ -71,7 +103,18 @@ export function CaseNotesTab({
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [requesting, setRequesting] = useState(false);
-  const [draggingChangeId, setDraggingChangeId] = useState<string | null>(null);
+  const [activeId, setActiveId] = useState<string | null>(null);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 4,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
   const notes = detail.notes;
   const editable =
@@ -152,6 +195,28 @@ export function CaseNotesTab({
 
   // eslint-disable-next-line react-hooks/incompatible-library -- RHF watch() cannot be memoized; skipping memoization of this form is intentional and safe.
   const complicationsPresent = form.watch("complicationsPresent");
+
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveId(String(event.active.id));
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      const oldIndex = changes.fields.findIndex((item) => item.id === active.id);
+      const newIndex = changes.fields.findIndex((item) => item.id === over.id);
+      if (oldIndex !== -1 && newIndex !== -1) {
+        changes.move(oldIndex, newIndex);
+      }
+    }
+    setActiveId(null);
+  };
+
+  const handleDragCancel = () => {
+    setActiveId(null);
+  };
+
+  const activeIndex = changes.fields.findIndex((item) => item.id === activeId);
 
   return (
     <form onSubmit={onSubmit} noValidate className="space-y-6">
@@ -263,8 +328,8 @@ export function CaseNotesTab({
         <CardHeader>
           <CardTitle>Changes performed</CardTitle>
           <CardDescription>
-            An ordered list. Drag a row to reorder it; changes stay on this device until you save
-            the notes.
+            An ordered list. Drag a row handle to reorder it; changes stay on this device until you
+            save the notes.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -272,82 +337,52 @@ export function CaseNotesTab({
             <p className="text-muted-foreground text-sm">No changes recorded yet.</p>
           ) : null}
 
-          <ol className="space-y-2">
-            {changes.fields.map((field, index) => (
-              <li
-                key={field.id}
-                className={
-                  draggingChangeId === field.id
-                    ? "bg-muted/50 flex items-start gap-2 rounded-md"
-                    : "flex items-start gap-2"
-                }
-                onDragOver={editable ? (event) => event.preventDefault() : undefined}
-                onDrop={
-                  editable
-                    ? (event) => {
-                        event.preventDefault();
-                        const sourceId = event.dataTransfer.getData("text/plain") || draggingChangeId;
-                        const sourceIndex = changes.fields.findIndex((change) => change.id === sourceId);
-                        if (sourceIndex >= 0 && sourceIndex !== index) changes.move(sourceIndex, index);
-                        setDraggingChangeId(null);
-                      }
-                    : undefined
-                }
-              >
-                {editable ? (
-                  <button
-                    type="button"
-                    draggable
-                    title="Drag to reorder"
-                    aria-label={`Drag change ${index + 1} to reorder`}
-                    className="text-muted-foreground mt-1.5 flex w-7 shrink-0 cursor-grab items-center justify-center rounded-sm py-1 active:cursor-grabbing focus-visible:ring-2 focus-visible:outline-none"
-                    onDragStart={(event) => {
-                      event.dataTransfer.effectAllowed = "move";
-                      event.dataTransfer.setData("text/plain", field.id);
-                      setDraggingChangeId(field.id);
-                    }}
-                    onDragEnd={() => setDraggingChangeId(null)}
-                  >
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            modifiers={[restrictToVerticalAxis]}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+            onDragCancel={handleDragCancel}
+          >
+            <SortableContext
+              items={changes.fields.map((field) => field.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              <ul className="space-y-2">
+                {changes.fields.map((field, index) => (
+                  <SortableChangeRow
+                    key={field.id}
+                    fieldId={field.id}
+                    index={index}
+                    editable={editable}
+                    form={form}
+                    onRemove={() => changes.remove(index)}
+                  />
+                ))}
+              </ul>
+            </SortableContext>
+
+            <DragOverlay dropAnimation={dropAnimationConfig}>
+              {activeId && activeIndex >= 0 ? (
+                <div className="bg-background/95 border-primary/40 ring-primary/20 flex items-start gap-2.5 rounded-lg border p-1 shadow-2xl ring-2 backdrop-blur-md">
+                  <div className="text-primary bg-primary/10 mt-1 flex size-8 shrink-0 cursor-grabbing items-center justify-center rounded-md">
                     <GripVertical className="size-4" aria-hidden />
-                  </button>
-                ) : (
-                  <span
-                    className="text-muted-foreground mt-2.5 flex w-7 shrink-0 items-center justify-center text-sm tabular-nums"
-                    aria-hidden
-                  >
-                    {index + 1}
-                  </span>
-                )}
-
-                <div className="flex-1 space-y-1">
-                  <Input
-                    aria-label={`Change performed ${index + 1}`}
-                    disabled={!editable}
-                    placeholder="e.g. Dorsal reduction"
-                    {...form.register(`changesPerformed.${index}.description`)}
-                  />
-                  <FieldError
-                    errors={[form.formState.errors.changesPerformed?.[index]?.description]}
-                  />
-                </div>
-
-                {editable ? (
-                  <div className="flex gap-1">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="text-destructive size-9"
-                      onClick={() => changes.remove(index)}
-                      aria-label={`Remove change ${index + 1}`}
-                    >
-                      <Trash2 aria-hidden />
-                    </Button>
                   </div>
-                ) : null}
-              </li>
-            ))}
-          </ol>
+                  <div className="flex-1">
+                    <Input
+                      readOnly
+                      tabIndex={-1}
+                      value={form.getValues(`changesPerformed.${activeIndex}.description`) || ""}
+                      placeholder="e.g. Dorsal reduction"
+                      className="bg-background shadow-xs pointer-events-none"
+                    />
+                  </div>
+                  <div className="size-9 shrink-0" />
+                </div>
+              ) : null}
+            </DragOverlay>
+          </DndContext>
 
           {editable ? (
             <Button
@@ -605,5 +640,95 @@ function NoteField({
       />
       <FieldError errors={[error]} />
     </Field>
+  );
+}
+
+function SortableChangeRow({
+  fieldId,
+  index,
+  editable,
+  form,
+  onRemove,
+}: {
+  fieldId: string;
+  index: number;
+  editable: boolean;
+  form: NotesForm;
+  onRemove: () => void;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
+    id: fieldId,
+    disabled: !editable,
+  });
+
+  const style: React.CSSProperties = {
+    transform: CSS.Translate.toString(transform),
+    transition,
+  };
+
+  return (
+    <li
+      ref={setNodeRef}
+      style={style}
+      className={cn(
+        "group relative flex items-start gap-2.5 rounded-lg border border-transparent p-1 transition-[background-color,border-color,opacity,shadow] duration-150",
+        isDragging
+          ? "border-primary/40 bg-primary/5 opacity-30 border-dashed shadow-inner"
+          : "hover:border-border/40 hover:bg-muted/20"
+      )}
+    >
+      {editable ? (
+        <button
+          type="button"
+          {...attributes}
+          {...listeners}
+          title="Drag to reorder"
+          aria-label={`Drag change ${index + 1} to reorder`}
+          className="text-muted-foreground/60 hover:text-foreground hover:bg-muted active:text-foreground active:bg-muted active:cursor-grabbing mt-1 flex size-8 shrink-0 cursor-grab items-center justify-center rounded-md transition-all duration-150 active:scale-95 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+        >
+          <GripVertical className="size-4" aria-hidden />
+        </button>
+      ) : (
+        <span
+          className="text-muted-foreground mt-2 flex size-8 shrink-0 items-center justify-center text-sm font-medium tabular-nums"
+          aria-hidden
+        >
+          {index + 1}
+        </span>
+      )}
+
+      <div className="flex-1 space-y-1">
+        <Input
+          aria-label={`Change performed ${index + 1}`}
+          disabled={!editable}
+          placeholder="e.g. Dorsal reduction"
+          className="bg-background transition-colors focus-visible:border-primary"
+          {...form.register(`changesPerformed.${index}.description`)}
+        />
+        <FieldError
+          errors={[form.formState.errors.changesPerformed?.[index]?.description]}
+        />
+      </div>
+
+      {editable ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="text-muted-foreground/70 hover:text-destructive hover:bg-destructive/10 mt-0.5 size-9 shrink-0 rounded-md transition-colors"
+          onClick={onRemove}
+          aria-label={`Remove change ${index + 1}`}
+        >
+          <Trash2 className="size-4" aria-hidden />
+        </Button>
+      ) : null}
+    </li>
   );
 }

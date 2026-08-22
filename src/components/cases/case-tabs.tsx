@@ -35,17 +35,29 @@ export function CaseTabs({
   maxImageBytes: number;
   initialTab?: string;
 }) {
-  const [tab, setTab] = useState(initialTab);
-
   const beforeVisit = detail.visits.find((visit) => visit.visit_type === "BEFORE") ?? null;
   const afterVisit = detail.visits.find((visit) => visit.visit_type === "AFTER") ?? null;
   const followups = detail.visits.filter((visit) => visit.visit_type === "FOLLOW_UP");
   const showAudit = can(role, "audit:read");
+
   // The expert review is Dr. Praveen's, and Dr. Praveen is the administrator.
-  // Other roles do not see the tab at all — the case header and completion
-  // checklist still show whether the review has been signed off.
-  const showReview = can(role, "review:read");
+  // A review in progress is nobody else's business — a half-written assessment
+  // read as a finding is worse than no assessment at all. Once it is signed
+  // off, though, it is part of the clinical record, so everyone who can see the
+  // case can read it. Writing stays with the administrator either way, in the
+  // permission table and in the RLS policy on `case_reviews`.
+  const reviewCompleted = detail.review?.status === "COMPLETED";
+  const showReview = can(role, "review:read") || reviewCompleted;
   const archived = Boolean(detail.summary.archived_at);
+
+  // A `?tab=` deep link can name a tab this user cannot see — a notification
+  // linking to the review, followed later by an account whose role changed.
+  // Falling back to Overview beats rendering a tab strip with nothing selected.
+  const [tab, setTab] = useState(() => {
+    if (initialTab === "review" && !showReview) return "overview";
+    if (initialTab === "audit" && !showAudit) return "overview";
+    return initialTab;
+  });
 
   // The After phase opens only once Before has been saved. The server enforces
   // this too — this is the explanation, not the control.

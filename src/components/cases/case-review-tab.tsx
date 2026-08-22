@@ -21,9 +21,14 @@ import type { ReviewStatus, RoleCode } from "@/lib/types";
 /**
  * Expert review: the reviewing administrator's final assessment.
  *
- * Only an administrator reaches this tab, and a case cannot be marked complete
+ * Only an administrator can write it, and a case cannot be marked complete
  * until the review here is COMPLETED — which makes closing a case the
  * administrator's decision by construction.
+ *
+ * Everyone else reaches this tab only once the review is COMPLETED, and reads
+ * it as prose rather than through a disabled form: a signed-off assessment is a
+ * clinical record to be read, not an input somebody is locked out of. A review
+ * still in progress stays hidden entirely (see `CaseTabs`).
  *
  * Documented behaviour: editing an assessment after completion keeps the review
  * COMPLETED, snapshots the previous text into the revision history, and audits
@@ -115,20 +120,29 @@ export function CaseReviewTab({ detail, role }: { detail: CaseDetail; role: Role
               </Alert>
             ) : null}
 
-            <Field>
-              <FieldLabel htmlFor="final-assessment">Final assessment</FieldLabel>
-              <Textarea
-                id="final-assessment"
-                rows={12}
-                disabled={!editable}
-                value={assessment}
-                onChange={(event) => setAssessment(event.target.value)}
-                placeholder="Overall clinical assessment of this case"
-              />
-              <FieldDescription>
-                A final assessment is required before the review can be completed.
-              </FieldDescription>
-            </Field>
+            {editable ? (
+              <Field>
+                <FieldLabel htmlFor="final-assessment">Final assessment</FieldLabel>
+                <Textarea
+                  id="final-assessment"
+                  rows={12}
+                  value={assessment}
+                  onChange={(event) => setAssessment(event.target.value)}
+                  placeholder="Overall clinical assessment of this case"
+                />
+                <FieldDescription>
+                  A final assessment is required before the review can be completed.
+                </FieldDescription>
+              </Field>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-muted-foreground text-xs font-medium">Final assessment</p>
+                {/* `whitespace-pre-wrap` keeps the paragraphing the reviewer typed. */}
+                <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                  {review?.final_assessment?.trim() || "No assessment was recorded."}
+                </p>
+              </div>
+            )}
 
             {editable ? (
               <div className="flex flex-wrap gap-2">
@@ -166,7 +180,9 @@ export function CaseReviewTab({ detail, role }: { detail: CaseDetail; role: Role
               </div>
             ) : (
               <p className="text-muted-foreground text-sm">
-                Only an administrator can record the expert review.
+                Completed by {detail.reviewerName ?? "the reviewing administrator"}
+                {review?.reviewed_at ? ` on ${formatTimestamp(review.reviewed_at)}` : ""}. Only an
+                administrator can record or change an expert review.
               </p>
             )}
           </FieldGroup>
