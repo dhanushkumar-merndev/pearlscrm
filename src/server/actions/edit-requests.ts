@@ -14,6 +14,7 @@ import {
 } from "@/lib/validation/schemas";
 import type { ActionInput } from "@/lib/validation/action-input";
 import { requirePermission, requireUser } from "@/server/auth/session";
+import { enforceWriteRateLimit } from "@/lib/rate-limit";
 import { recordAudit } from "@/server/services/audit";
 import { resolveEditAccess, scopeLabel, type ScopeTarget } from "@/server/services/edit-access";
 import { actionResult, type ActionResult } from "@/server/actions/result";
@@ -217,6 +218,7 @@ export async function decideEditRequest(
   return actionResult(async () => {
     const user = await requirePermission("edit_request:decide");
     const data = decideEditRequestSchema.parse(input);
+    await enforceWriteRateLimit("userAccessChange", user.id);
 
     const admin = createSupabaseAdminClient();
 

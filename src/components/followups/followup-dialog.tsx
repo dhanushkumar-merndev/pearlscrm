@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -19,13 +18,14 @@ import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { todayIsoDate } from "@/lib/dates";
-import { createFollowup, suggestVisitLabel, updateVisit } from "@/server/actions/visits";
+import { suggestFollowupLabel } from "@/lib/followup";
+import { createFollowup, updateVisit } from "@/server/actions/visits";
 import type { CaseVisit } from "@/lib/types";
 
 /**
  * Add or edit a follow-up visit.
  *
- * Entering a visit date asks the server to suggest an interval label. The
+ * The suggested interval is calculated locally from the two dates. The
  * suggestion is only a starting point — the clinician can replace it, and a
  * visit at 5 months stays a 5-month visit rather than being forced to a preset.
  */
@@ -45,11 +45,10 @@ export function FollowupDialog({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
-  const [visitDate, setVisitDate] = useState("");
-  const [label, setLabel] = useState("");
-  const [observation, setObservation] = useState("");
-  const [labelEdited, setLabelEdited] = useState(false);
-  const [suggesting, setSuggesting] = useState(false);
+  const [visitDate, setVisitDate] = useState(visit?.visit_date ?? "");
+  const [label, setLabel] = useState(visit?.display_label ?? "");
+  const [observation, setObservation] = useState(visit?.clinical_observation ?? "");
+  const [labelEdited, setLabelEdited] = useState(Boolean(visit));
   const [error, setError] = useState<string | null>(null);
 
   // Derived during render — the HTML date input already prevents a date before
@@ -61,39 +60,7 @@ export function FollowupDialog({
 
   const handleOpenChange = (next: boolean) => {
     onOpenChange(next);
-    if (next) {
-      // Reset the form for the visit being edited instead of doing it inside
-      // an effect while the dialog is closing/opening.
-      setVisitDate(visit?.visit_date ?? "");
-      setLabel(visit?.display_label ?? "");
-      setObservation(visit?.clinical_observation ?? "");
-      setLabelEdited(Boolean(visit));
-      setError(null);
-    }
   };
-
-  useEffect(() => {
-    if (!open || !visitDate || dateError) return;
-
-    // Only suggest while the user has not taken over the label themselves.
-    if (labelEdited) return;
-
-    let cancelled = false;
-    // Loading flag while the suggestion request is in flight; cleared in the
-    // async completion callback, never synchronously after the first tick.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setSuggesting(true);
-
-    void suggestVisitLabel({ caseId, visitDate }).then((result) => {
-      if (cancelled) return;
-      setSuggesting(false);
-      if (result.ok) setLabel(result.data.label);
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [open, visitDate, surgeryDate, labelEdited, caseId, dateError]);
 
   const submit = () => {
     setError(null);
@@ -153,21 +120,22 @@ export function FollowupDialog({
               max={todayIsoDate()}
               value={visitDate}
               aria-invalid={Boolean(dateError)}
-              onChange={(event) => setVisitDate(event.target.value)}
+              onChange={(event) => {
+                const nextDate = event.target.value;
+                setVisitDate(nextDate);
+
+                // This is deterministic calendar maths. Keeping it local means
+                // opening or changing this field never needs a server action.
+                if (!labelEdited && nextDate >= surgeryDate) {
+                  setLabel(suggestFollowupLabel(surgeryDate, nextDate));
+                }
+              }}
             />
             <FieldError>{dateError}</FieldError>
           </Field>
 
           <Field>
-            <FieldLabel htmlFor="followup-label">
-              Label
-              {suggesting ? (
-                <span className="text-muted-foreground ml-2 inline-flex items-center gap-1 text-xs font-normal">
-                  <Sparkles className="size-3" aria-hidden />
-                  suggesting…
-                </span>
-              ) : null}
-            </FieldLabel>
+            <FieldLabel htmlFor="followup-label">Label</FieldLabel>
             <Input
               id="followup-label"
               value={label}

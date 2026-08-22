@@ -8,6 +8,7 @@ import { AppError, notFound, validationFailed } from "@/lib/errors";
 import { createUserSchema, updateUserSchema } from "@/lib/validation/schemas";
 import type { ActionInput } from "@/lib/validation/action-input";
 import { requirePermission } from "@/server/auth/session";
+import { enforceWriteRateLimit } from "@/lib/rate-limit";
 import { recordAudit } from "@/server/services/audit";
 import { actionResult, type ActionResult } from "@/server/actions/result";
 import type { ProfileWithRole, RoleCode } from "@/lib/types";
@@ -28,6 +29,7 @@ export async function createUser(
   return actionResult(async () => {
     const actor = await requirePermission("user:manage");
     const data = createUserSchema.parse(input);
+    await enforceWriteRateLimit("userAccessChange", actor.id);
 
     const admin = createSupabaseAdminClient();
     const roleId = await roleIdForCode(data.roleCode);
@@ -84,6 +86,7 @@ export async function updateUser(
   return actionResult(async () => {
     const actor = await requirePermission("user:manage");
     const data = updateUserSchema.parse(input);
+    await enforceWriteRateLimit("userAccessChange", actor.id);
 
     // An administrator locking themselves out would leave the clinic without
     // any way back in.
@@ -174,43 +177,128 @@ async function roleIdForCode(code: RoleCode): Promise<string> {
   return data.id;
 }
 
-export async function listUsers(): Promise<ProfileWithRole[]> {
+export type UserListResult = {
+  rows: ProfileWithRole[];
+  total: number;
+  page: number;
+  pageSize: number;
+  pageCount: number;
+};
+
+const USER_PAGE_SIZE = 50;
+
+/**
+ * One page of accounts, newest-name-first, with the total so the table can say
+ * how many there are rather than silently showing whatever the database
+ * happened to return.
+ *
+ * Email and last sign-in live in `auth.users`, reachable only through the admin
+ * API, so they are fetched for exactly the ids on this page.
+ */
+export async function listUsers(
+  options: { page?: number; pageSize?: number } = {},
+): Promise<UserListResult> {
   await requirePermission("user:manage");
+
+  const pageSize = Math.min(Math.max(options.pageSize ?? USER_PAGE_SIZE, 1), 200);
+  const page = Math.max(options.page ?? 1, 1);
+  const from = (page - 1) * pageSize;
 
   const supabase = await createSupabaseServerClient();
 
-  const { data: profiles } = await supabase
+  const { data: profiles, count } = await supabase
     .from("profiles")
-    .select("id, display_name, role_id, is_active, case_visibility_scope, created_at, updated_at, roles(code, name)")
+    .select(
+      "id, display_name, role_id, is_active, case_visibility_scope, created_at, updated_at, roles(code, name)",
+      { count: "exact" },
+    )
     .order("display_name", { ascending: true })
+    .range(from, from + pageSize - 1)
     .returns<
       (ProfileWithRole & { roles: { code: RoleCode; name: string } | null })[]
     >();
 
   const rows = profiles ?? [];
+  const authById = await lookupAuthUsers(rows.map((row) => row.id));
+  const total = count ?? rows.length;
 
-  // Email and last sign-in live in auth.users, reachable only via the admin API.
+  return {
+    rows: rows.map((row) => ({
+      id: row.id,
+      display_name: row.display_name,
+      role_id: row.role_id,
+      is_active: row.is_active,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+      role_code: row.roles?.code ?? "VIEWER",
+      role_name: row.roles?.name ?? "Viewer",
+      case_visibility_scope: row.case_visibility_scope,
+      email: authById.get(row.id)?.email ?? null,
+      last_sign_in_at: authById.get(row.id)?.lastSignInAt ?? null,
+    })),
+    total,
+    page,
+    pageSize,
+    pageCount: Math.max(1, Math.ceil(total / pageSize)),
+  };
+}
+
+/**
+ * Every account as `{ id, name }`, for filter dropdowns.
+ *
+ * Deliberately separate from `listUsers`: a filter needs the whole set but none
+ * of the auth-side detail, so this stays a single cheap query and never touches
+ * the Supabase admin API.
+ */
+export async function listUserOptions(): Promise<{ id: string; name: string }[]> {
+  await requirePermission("user:manage");
+
+  const supabase = await createSupabaseServerClient();
+
+  const { data } = await supabase
+    .from("profiles")
+    .select("id, display_name")
+    .order("display_name", { ascending: true })
+    .limit(1000)
+    .returns<{ id: string; display_name: string }[]>();
+
+  return (data ?? []).map((row) => ({ id: row.id, name: row.display_name }));
+}
+
+/**
+ * Emails and last sign-in for a specific set of ids.
+ *
+ * The admin API only pages, so a large directory is walked until every id on
+ * the page has been seen — bounded by a page cap so a pathological directory
+ * cannot turn one screen into an unbounded crawl.
+ */
+async function lookupAuthUsers(
+  ids: string[],
+): Promise<Map<string, { email: string | null; lastSignInAt: string | null }>> {
+  const wanted = new Set(ids);
+  const found = new Map<string, { email: string | null; lastSignInAt: string | null }>();
+  if (wanted.size === 0) return found;
+
   const admin = createSupabaseAdminClient();
-  const { data: authUsers } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
+  const perPage = 200;
+  const maxPages = 25;
 
-  const authById = new Map(
-    (authUsers?.users ?? []).map((user) => [
-      user.id,
-      { email: user.email ?? null, lastSignInAt: user.last_sign_in_at ?? null },
-    ]),
-  );
+  for (let page = 1; page <= maxPages && found.size < wanted.size; page += 1) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage });
+    if (error) break;
 
-  return rows.map((row) => ({
-    id: row.id,
-    display_name: row.display_name,
-    role_id: row.role_id,
-    is_active: row.is_active,
-    created_at: row.created_at,
-    updated_at: row.updated_at,
-    role_code: row.roles?.code ?? "VIEWER",
-    role_name: row.roles?.name ?? "Viewer",
-    case_visibility_scope: row.case_visibility_scope,
-    email: authById.get(row.id)?.email ?? null,
-    last_sign_in_at: authById.get(row.id)?.lastSignInAt ?? null,
-  }));
+    const users = data?.users ?? [];
+
+    for (const user of users) {
+      if (!wanted.has(user.id)) continue;
+      found.set(user.id, {
+        email: user.email ?? null,
+        lastSignInAt: user.last_sign_in_at ?? null,
+      });
+    }
+
+    if (users.length < perPage) break;
+  }
+
+  return found;
 }

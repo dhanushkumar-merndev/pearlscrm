@@ -1,10 +1,13 @@
 import { redirect } from "next/navigation";
 
 import { AppSidebar } from "@/components/app/app-sidebar";
+import { NavigationEventDispatcher } from "@/components/app/navigation-event-dispatcher";
 import { NotificationBell } from "@/components/app/notification-bell";
+import { QueryProvider } from "@/components/app/query-provider";
 import { UserMenu } from "@/components/app/user-menu";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { getSessionUser } from "@/server/auth/session";
+import { getAvatarReadUrl } from "@/server/services/avatar";
 
 /**
  * Authenticated application shell.
@@ -31,20 +34,25 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
     );
   }
 
+  const avatarUrl = await getAvatarReadUrl(user.avatarObjectKey);
+
   return (
     <SidebarProvider>
-      <AppSidebar role={user.role} />
+      <QueryProvider userId={user.id}>
+        <NavigationEventDispatcher />
+        <AppSidebar role={user.role} />
 
-      <SidebarInset>
-        <header className="bg-background sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b px-4">
-          <SidebarTrigger className="-ml-1" />
-          <div className="flex-1" />
-          <NotificationBell userId={user.id} />
-          <UserMenu displayName={user.displayName} email={user.email} role={user.role} />
-        </header>
+        <SidebarInset>
+          <header className="bg-background sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b px-4 md:px-8 lg:px-10">
+            <SidebarTrigger className="-ml-1" />
+            <div className="flex-1" />
+            <NotificationBell userId={user.id} />
+            <UserMenu displayName={user.displayName} email={user.email} role={user.role} avatarUrl={avatarUrl} />
+          </header>
 
-        <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">{children}</div>
-      </SidebarInset>
+          <div className="flex flex-1 flex-col gap-6 px-4 py-4 md:px-8 md:py-6 lg:px-10 lg:py-8">{children}</div>
+        </SidebarInset>
+      </QueryProvider>
     </SidebarProvider>
   );
 }

@@ -1,10 +1,11 @@
 "use client";
 
 import { useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -24,8 +25,8 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatTimestamp } from "@/lib/dates";
 import { ROLE_LABELS } from "@/lib/permissions";
-import { ROLE_CODES, type ProfileWithRole, type RoleCode } from "@/lib/types";
-import { updateUser } from "@/server/actions/users";
+import { ROLE_CODES, type RoleCode } from "@/lib/types";
+import { updateUser, type UserListResult } from "@/server/actions/users";
 
 /**
  * User administration table.
@@ -34,14 +35,23 @@ import { updateUser } from "@/server/actions/users";
  * the next request rather than at the next token refresh.
  */
 export function UsersTable({
-  users,
+  result,
   currentUserId,
 }: {
-  users: ProfileWithRole[];
+  result: UserListResult;
   currentUserId: string;
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [pending, startTransition] = useTransition();
+
+  const users = result.rows;
+
+  const goToPage = (page: number) => {
+    const next = new URLSearchParams(searchParams.toString());
+    next.set("page", String(page));
+    router.push(`/users?${next.toString()}`);
+  };
 
   const apply = (
     userId: string,
@@ -66,7 +76,8 @@ export function UsersTable({
   };
 
   return (
-    <div className="overflow-x-auto rounded-md border">
+    <div className="space-y-4">
+      <div className="overflow-x-auto rounded-md border">
       <Table>
         <TableHeader>
           <TableRow>
@@ -174,6 +185,42 @@ export function UsersTable({
           })}
         </TableBody>
       </Table>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-muted-foreground text-sm tabular-nums">
+          {result.total === 0
+            ? "No accounts"
+            : `Showing ${(result.page - 1) * result.pageSize + 1}\u2013${Math.min(
+                result.page * result.pageSize,
+                result.total,
+              )} of ${result.total} ${result.total === 1 ? "account" : "accounts"}`}
+        </p>
+
+        {result.pageCount > 1 ? (
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={result.page <= 1}
+              onClick={() => goToPage(result.page - 1)}
+            >
+              Previous
+            </Button>
+            <span className="text-muted-foreground text-sm tabular-nums">
+              Page {result.page} of {result.pageCount}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={result.page >= result.pageCount}
+              onClick={() => goToPage(result.page + 1)}
+            >
+              Next
+            </Button>
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import {
   createMasterValueSchema,
+  pageMasterValuesSchema,
   searchMasterValuesSchema,
   setMasterValueActiveSchema,
 } from "@/lib/validation/schemas";
@@ -11,8 +12,10 @@ import type { ActionInput } from "@/lib/validation/action-input";
 import { requirePermission, requireUser } from "@/server/auth/session";
 import {
   createMasterValue,
+  pageMasterValues,
   searchMasterValues,
   setMasterValueActive,
+  type MasterValuePage,
 } from "@/server/services/master-data";
 import { actionResult, type ActionResult } from "@/server/actions/result";
 import type { MasterValue } from "@/lib/types";
@@ -82,5 +85,22 @@ export async function setMasterValueActiveAction(
     revalidatePath("/settings/master-data");
 
     return value;
+  });
+}
+
+/**
+ * One page of a master table for the administration screen.
+ *
+ * Search and paging happen in the database, so a value beyond the first page is
+ * still findable and the screen can state how many rows there really are.
+ */
+export async function pageMasterValuesAction(
+  input: ActionInput<typeof pageMasterValuesSchema>,
+): Promise<ActionResult<MasterValuePage>> {
+  return actionResult(async () => {
+    await requirePermission("master_data:manage");
+    const data = pageMasterValuesSchema.parse(input);
+
+    return pageMasterValues(data);
   });
 }

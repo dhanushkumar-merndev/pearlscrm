@@ -3,11 +3,13 @@ import type { Metadata } from "next";
 import { PageHeader } from "@/components/app/page-header";
 import { ProfileForms } from "@/components/app/profile-forms";
 import { requireUser } from "@/server/auth/session";
+import { getAvatarReadUrl } from "@/server/services/avatar";
 
 export const metadata: Metadata = { title: "Profile" };
 
 export default async function ProfilePage() {
   const user = await requireUser();
+  const avatarUrl = await getAvatarReadUrl(user.avatarObjectKey);
 
   return (
     <>
@@ -20,6 +22,7 @@ export default async function ProfilePage() {
         displayName={user.displayName}
         email={user.email}
         role={user.role}
+        avatarUrl={avatarUrl}
       />
     </>
   );

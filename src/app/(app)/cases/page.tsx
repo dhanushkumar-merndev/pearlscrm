@@ -1,32 +1,19 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Suspense } from "react";
 
 import { PageHeader } from "@/components/app/page-header";
-import { RealtimeRefresh } from "@/components/app/realtime-refresh";
-import { CasesFilters } from "@/components/cases/cases-filters";
-import { CasesTable } from "@/components/cases/cases-table";
+import { CasesDataPanel } from "@/components/cases/cases-data-panel";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import { can } from "@/lib/permissions";
-import { caseListQuerySchema } from "@/lib/validation/schemas";
 import { requireUser } from "@/server/auth/session";
-import { listCases } from "@/server/queries/cases";
-import { listMasterValues } from "@/server/services/master-data";
 
 export const metadata: Metadata = { title: "Cases" };
 
-export default async function CasesPage({ searchParams }: PageProps<"/cases">) {
+export default async function CasesPage() {
   const user = await requireUser();
-  const params = await searchParams;
 
   return (
     <>
-      <RealtimeRefresh
-        channel="cases-list"
-        tables={[{ table: "cases" }, { table: "case_visits" }]}
-      />
-
       <PageHeader
         title="Cases"
         description="Search, filter and open clinical cases."
@@ -39,58 +26,7 @@ export default async function CasesPage({ searchParams }: PageProps<"/cases">) {
         }
       />
 
-      <Suspense fallback={<Skeleton className="h-28 w-full" />}>
-        <Filters />
-      </Suspense>
-
-      <Suspense key={JSON.stringify(params)} fallback={<TableSkeleton />}>
-        <Results searchParams={params} showCreator={user.role === "ADMIN"} />
-      </Suspense>
+      <CasesDataPanel role={user.role} />
     </>
-  );
-}
-
-async function Filters() {
-  const [procedures, procedureTypes, tags] = await Promise.all([
-    listMasterValues({ table: "procedures" }),
-    listMasterValues({ table: "procedure_types" }),
-    listMasterValues({ table: "clinical_tags" }),
-  ]);
-
-  return <CasesFilters procedures={procedures} procedureTypes={procedureTypes} tags={tags} />;
-}
-
-async function Results({
-  searchParams,
-  showCreator,
-}: {
-  searchParams: Record<string, string | string[] | undefined>;
-  showCreator: boolean;
-}) {
-  // Unparseable filters fall back to defaults rather than erroring the page.
-  const parsed = caseListQuerySchema.safeParse(flatten(searchParams));
-  const query = parsed.success ? parsed.data : caseListQuerySchema.parse({});
-
-  const result = await listCases(query, { includeCreator: showCreator });
-
-  return <CasesTable result={result} query={query} showCreator={showCreator} />;
-}
-
-function flatten(params: Record<string, string | string[] | undefined>) {
-  return Object.fromEntries(
-    Object.entries(params)
-      .map(([key, value]) => [key, Array.isArray(value) ? value[0] : value])
-      .filter(([, value]) => value !== undefined && value !== ""),
-  );
-}
-
-function TableSkeleton() {
-  return (
-    <div className="space-y-3">
-      <Skeleton className="h-10 w-full" />
-      {Array.from({ length: 8 }).map((_, index) => (
-        <Skeleton key={index} className="h-12 w-full" />
-      ))}
-    </div>
   );
 }

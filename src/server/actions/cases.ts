@@ -14,6 +14,7 @@ import {
 } from "@/lib/validation/schemas";
 import type { ActionInput } from "@/lib/validation/action-input";
 import { requirePermission } from "@/server/auth/session";
+import { enforceWriteRateLimit } from "@/lib/rate-limit";
 import { recordAudit, diffForAudit } from "@/server/services/audit";
 import { consumeEditGrant, requireEditAccess } from "@/server/services/edit-access";
 import { actionResult, type ActionResult } from "@/server/actions/result";
@@ -32,6 +33,7 @@ export async function createCase(
   return actionResult(async () => {
     const user = await requirePermission("case:create");
     const data = createCaseSchema.parse(input);
+    await enforceWriteRateLimit("caseCreate", user.id);
 
     const admin = createSupabaseAdminClient();
 

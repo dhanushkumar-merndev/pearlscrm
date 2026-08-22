@@ -23,6 +23,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import { can, type Permission } from "@/lib/permissions";
 import type { RoleCode } from "@/lib/types";
@@ -48,11 +49,18 @@ const ADMIN_NAV: NavItem[] = [
   },
   { href: "/users", label: "Users & Access", icon: Users, permission: "user:manage" },
   { href: "/audit", label: "Audit Logs", icon: ScrollText, permission: "audit:read" },
-  { href: "/settings/master-data", label: "Settings", icon: Settings, permission: "master_data:manage" },
+  { href: "/settings", label: "Settings", icon: Settings, permission: "master_data:manage" },
 ];
 
 export function AppSidebar({ role }: { role: RoleCode }) {
   const pathname = usePathname();
+  const { isMobile, setOpenMobile } = useSidebar();
+
+  const handleNavigate = () => {
+    if (isMobile) {
+      setOpenMobile(false);
+    }
+  };
 
   const adminItems = ADMIN_NAV.filter((item) => !item.permission || can(role, item.permission));
 
@@ -62,7 +70,7 @@ export function AppSidebar({ role }: { role: RoleCode }) {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton asChild size="lg">
-              <Link href="/dashboard">
+              <Link href="/dashboard" onClick={handleNavigate}>
                 <Image
                   src="/icon-512.png"
                   alt="Pearls Aesthetic Clinic logo"
@@ -91,7 +99,12 @@ export function AppSidebar({ role }: { role: RoleCode }) {
           <SidebarGroupContent>
             <SidebarMenu className="gap-1">
               {CLINICAL_NAV.map((item) => (
-                <NavLink key={item.href} item={item} pathname={pathname} />
+                <NavLink
+                  key={item.href}
+                  item={item}
+                  pathname={pathname}
+                  onNavigate={handleNavigate}
+                />
               ))}
             </SidebarMenu>
           </SidebarGroupContent>
@@ -103,7 +116,12 @@ export function AppSidebar({ role }: { role: RoleCode }) {
             <SidebarGroupContent>
               <SidebarMenu className="gap-1">
                 {adminItems.map((item) => (
-                  <NavLink key={item.href} item={item} pathname={pathname} />
+                  <NavLink
+                    key={item.href}
+                    item={item}
+                    pathname={pathname}
+                    onNavigate={handleNavigate}
+                  />
                 ))}
               </SidebarMenu>
             </SidebarGroupContent>
@@ -116,14 +134,22 @@ export function AppSidebar({ role }: { role: RoleCode }) {
   );
 }
 
-function NavLink({ item, pathname }: { item: NavItem; pathname: string }) {
+function NavLink({
+  item,
+  pathname,
+  onNavigate,
+}: {
+  item: NavItem;
+  pathname: string;
+  onNavigate: () => void;
+}) {
   const Icon = item.icon;
   const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
 
   return (
     <SidebarMenuItem>
       <SidebarMenuButton asChild isActive={active} tooltip={item.label}>
-        <Link href={item.href}>
+        <Link href={item.href} onClick={onNavigate}>
           <Icon aria-hidden />
           <span>{item.label}</span>
         </Link>
@@ -131,4 +157,3 @@ function NavLink({ item, pathname }: { item: NavItem; pathname: string }) {
     </SidebarMenuItem>
   );
 }
-

@@ -180,6 +180,7 @@ export function ImageSlotCard({
           ) : showsSavedImage && slot.image ? (
             <SecureImage
               imageId={slot.image.id}
+              versionId={version.id}
               alt={`${slot.viewType.display_name} clinical view`}
               onClick={onOpenViewer}
             />

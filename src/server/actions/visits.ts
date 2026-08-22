@@ -1,12 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { z } from "zod";
-
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { AppError, notFound, validationFailed } from "@/lib/errors";
-import { monthsAfterSurgery, suggestFollowupLabel } from "@/lib/followup";
+import { monthsAfterSurgery } from "@/lib/followup";
 import {
   createFollowupSchema,
   deleteVisitSchema,
@@ -15,10 +13,11 @@ import {
 } from "@/lib/validation/schemas";
 import type { ActionInput } from "@/lib/validation/action-input";
 import { requirePermission } from "@/server/auth/session";
+import { enforceWriteRateLimit } from "@/lib/rate-limit";
 import { recordAudit, diffForAudit } from "@/server/services/audit";
 import { consumeEditGrant, requireEditAccess } from "@/server/services/edit-access";
 import { actionResult, type ActionResult } from "@/server/actions/result";
-import type { CaseVisit, MasterValue } from "@/lib/types";
+import type { CaseVisit } from "@/lib/types";
 
 /**
  * Follow-up visits.
@@ -35,6 +34,7 @@ export async function createFollowup(
   return actionResult(async () => {
     const user = await requirePermission("visit:create");
     const data = createFollowupSchema.parse(input);
+    await enforceWriteRateLimit("followupCreate", user.id);
 
     const supabase = await createSupabaseServerClient();
 
@@ -314,48 +314,5 @@ export async function submitVisitImages(
     revalidatePath("/dashboard");
 
     return { visitId: data.visitId };
-  });
-}
-
-/**
- * Suggests a label for a candidate visit date. Read-only; the clinician is free
- * to replace whatever comes back.
- */
-export async function suggestVisitLabel(
-  input: { caseId: string; visitDate: string },
-): Promise<ActionResult<{ label: string; monthsAfterSurgery: number }>> {
-  return actionResult(async () => {
-    await requirePermission("visit:create");
-
-    const caseId = z.string().uuid().parse(input.caseId);
-    const visitDate = z.string().parse(input.visitDate);
-
-    const supabase = await createSupabaseServerClient();
-
-    const { data: caseRow } = await supabase
-      .from("cases")
-      .select("surgery_date")
-      .eq("id", caseId)
-      .maybeSingle<{ surgery_date: string }>();
-
-    if (!caseRow) throw notFound("This case could not be found.");
-
-    const { data: presets } = await supabase
-      .from("followup_label_presets")
-      .select("*")
-      .eq("is_active", true)
-      .order("sort_order", { ascending: true })
-      .returns<MasterValue[]>();
-
-    const label = suggestFollowupLabel(
-      caseRow.surgery_date,
-      visitDate,
-      (presets ?? []).map((preset) => ({
-        display_name: preset.display_name,
-        months_after_surgery: preset.months_after_surgery ?? null,
-      })),
-    );
-
-    return { label, monthsAfterSurgery: monthsAfterSurgery(caseRow.surgery_date, visitDate) };
   });
 }

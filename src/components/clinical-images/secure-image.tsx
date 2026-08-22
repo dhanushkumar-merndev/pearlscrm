@@ -1,17 +1,21 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { ImageOff } from "lucide-react";
 
 import { Skeleton } from "@/components/ui/skeleton";
+import { CLINICAL_CACHE_TIME_MS } from "@/lib/query-client";
 import { cn } from "@/lib/utils";
+
+type SignedImageUrl = { url: string; expiresInSeconds: number };
 
 /**
  * Renders a private clinical image through a short-lived presigned URL.
  *
- * The URL is fetched per render from an authorized endpoint, never persisted,
- * and never a permanent public link. It is also refreshed shortly before it
- * expires so a long-open tab does not start showing broken images.
+ * The URL is fetched from an authorized endpoint and cached only in this
+ * signed-in browser session—never persisted and never public. It is refreshed
+ * shortly before expiry so a long-open tab does not show broken images.
  *
  * Loading is deferred until the element is near the viewport, so switching to a
  * follow-up tab does not pull six full-resolution originals at once.
@@ -35,8 +39,28 @@ export function SecureImage({
   const [visible, setVisible] = useState(
     () => eager || typeof IntersectionObserver === "undefined",
   );
-  const [url, setUrl] = useState<string | null>(null);
-  const [failed, setFailed] = useState(false);
+  const signedUrl = useQuery({
+    queryKey: ["clinical-image-url", imageId, versionId ?? null] as const,
+    queryFn: async (): Promise<SignedImageUrl> => {
+      const search = versionId ? `?versionId=${encodeURIComponent(versionId)}` : "";
+      const response = await fetch(`/api/images/${imageId}/url${search}`);
+      if (!response.ok) throw new Error("The image could not be loaded.");
+      return (await response.json()) as SignedImageUrl;
+    },
+    enabled: visible,
+    // URLs are short-lived. Keep the query in memory for an hour, but make it
+    // stale and re-sign it one minute before the current URL expires.
+    staleTime: (query) => {
+      const seconds = query.state.data?.expiresInSeconds ?? 90;
+      return Math.max(30, seconds - 60) * 1000;
+    },
+    gcTime: CLINICAL_CACHE_TIME_MS,
+    refetchInterval: (query) => {
+      const seconds = query.state.data?.expiresInSeconds;
+      return seconds ? Math.max(30, seconds - 60) * 1000 : false;
+    },
+    refetchOnWindowFocus: true,
+  });
 
   useEffect(() => {
     if (eager || visible) return;
@@ -58,43 +82,7 @@ export function SecureImage({
     return () => observer.disconnect();
   }, [eager, visible]);
 
-  useEffect(() => {
-    if (!visible) return;
-
-    let cancelled = false;
-    let refreshTimer: ReturnType<typeof setTimeout> | undefined;
-
-    const load = async () => {
-      setFailed(false);
-
-      try {
-        const search = versionId ? `?versionId=${encodeURIComponent(versionId)}` : "";
-        const response = await fetch(`/api/images/${imageId}/url${search}`);
-
-        if (!response.ok) throw new Error("denied");
-
-        const body = (await response.json()) as { url: string; expiresInSeconds: number };
-        if (cancelled) return;
-
-        setUrl(body.url);
-
-        // Re-sign a minute before expiry so the image never goes stale on screen.
-        const refreshIn = Math.max(30, body.expiresInSeconds - 60) * 1000;
-        refreshTimer = setTimeout(() => void load(), refreshIn);
-      } catch {
-        if (!cancelled) setFailed(true);
-      }
-    };
-
-    void load();
-
-    return () => {
-      cancelled = true;
-      if (refreshTimer) clearTimeout(refreshTimer);
-    };
-  }, [imageId, versionId, visible]);
-
-  if (failed) {
+  if (signedUrl.isError) {
     return (
       <div
         ref={containerRef}
@@ -106,7 +94,7 @@ export function SecureImage({
     );
   }
 
-  if (!url) {
+  if (!signedUrl.data) {
     return <Skeleton ref={containerRef} className="size-full" />;
   }
 
@@ -115,7 +103,7 @@ export function SecureImage({
     // optimizer would only cache something that is about to expire.
     // eslint-disable-next-line @next/next/no-img-element
     <img
-      src={url}
+      src={signedUrl.data.url}
       alt={alt}
       loading="lazy"
       decoding="async"

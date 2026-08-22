@@ -7,6 +7,7 @@ import { AppError, notFound } from "@/lib/errors";
 import { updateCaseAccessSchema } from "@/lib/validation/schemas";
 import type { ActionInput } from "@/lib/validation/action-input";
 import { requirePermission } from "@/server/auth/session";
+import { enforceWriteRateLimit } from "@/lib/rate-limit";
 import { actionResult, type ActionResult } from "@/server/actions/result";
 
 export async function updateCaseAccess(
@@ -15,6 +16,7 @@ export async function updateCaseAccess(
   return actionResult(async () => {
     const actor = await requirePermission("case_access:manage");
     const data = updateCaseAccessSchema.parse(input);
+    await enforceWriteRateLimit("userAccessChange", actor.id);
     const admin = createSupabaseAdminClient();
 
     const { error } = await admin.rpc("set_case_access", {

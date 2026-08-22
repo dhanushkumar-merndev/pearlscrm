@@ -130,3 +130,33 @@
     @apply font-sans;
   }
 }
+
+@keyframes tab-slide-from-right {
+  0% {
+    opacity: 0;
+    transform: translate3d(36px, 0, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes tab-slide-from-left {
+  0% {
+    opacity: 0;
+    transform: translate3d(-36px, 0, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+[data-slot="tabs-content"][data-state="active"][data-direction="forward"] {
+  animation: tab-slide-from-right 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+[data-slot="tabs-content"][data-state="active"][data-direction="backward"] {
+  animation: tab-slide-from-left 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}

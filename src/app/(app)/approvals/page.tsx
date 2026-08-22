@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { z } from "zod";
 
 import { PageHeader } from "@/components/app/page-header";
-import { RealtimeRefresh } from "@/components/app/realtime-refresh";
 import { ApprovalsPanel } from "@/components/approvals/approvals-panel";
 import { requirePermission } from "@/server/auth/session";
 import { listChanges } from "@/server/queries/changes";
@@ -29,11 +28,6 @@ export default async function ApprovalsPage({ searchParams }: PageProps<"/approv
 
   return (
     <>
-      <RealtimeRefresh
-        channel="approvals"
-        tables={[{ table: "case_edit_requests" }, { table: "audit_logs" }]}
-      />
-
       <PageHeader
         title="Edit Approvals"
         description="Submitted case information, image sets and follow-ups are locked. Approving a request grants the requester one editing pass; saving their changes closes it again."

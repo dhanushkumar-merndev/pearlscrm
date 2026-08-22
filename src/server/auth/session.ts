@@ -13,12 +13,15 @@ export type SessionUser = {
   displayName: string;
   role: RoleCode;
   isActive: boolean;
+  /** Server-only storage reference; never passed to a Client Component. */
+  avatarObjectKey: string | null;
 };
 
 type ProfileJoin = {
   id: string;
   display_name: string;
   is_active: boolean;
+  avatar_object_key: string | null;
   roles: { code: RoleCode } | null;
 };
 
@@ -43,7 +46,7 @@ export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("id, display_name, is_active, roles(code)")
+    .select("id, display_name, is_active, avatar_object_key, roles(code)")
     .eq("id", user.id)
     .maybeSingle<ProfileJoin>();
 
@@ -55,6 +58,7 @@ export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
     displayName: profile.display_name || (user.email ?? "User"),
     role: profile.roles.code,
     isActive: profile.is_active,
+    avatarObjectKey: profile.avatar_object_key,
   };
 });
 

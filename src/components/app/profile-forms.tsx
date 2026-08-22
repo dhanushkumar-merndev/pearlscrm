@@ -2,15 +2,17 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { KeyRound, UserRound } from "lucide-react";
+import { KeyRound, Upload, UserRound } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { ROLE_LABELS } from "@/lib/permissions";
+import { uploadAvatar } from "@/lib/avatar-upload-client";
 import { changeOwnPassword, updateOwnProfile } from "@/server/actions/profile";
 import type { RoleCode } from "@/lib/types";
 
@@ -27,16 +29,20 @@ export function ProfileForms({
   displayName,
   email,
   role,
+  avatarUrl,
 }: {
   displayName: string;
   email: string | null;
   role: RoleCode;
+  avatarUrl: string | null;
 }) {
   const router = useRouter();
 
   const [name, setName] = useState(displayName);
   const [nameError, setNameError] = useState<string | null>(null);
   const [savingName, startSaveName] = useTransition();
+  const [savingAvatar, startSaveAvatar] = useTransition();
+  const [avatarError, setAvatarError] = useState<string | null>(null);
 
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -68,6 +74,49 @@ export function ProfileForms({
 
         <CardContent>
           <FieldGroup>
+            <Field>
+              <FieldLabel>Profile photo</FieldLabel>
+              <div className="flex items-center gap-4">
+                <Avatar size="lg">
+                  {avatarUrl ? <AvatarImage src={avatarUrl} alt="Your profile photo" /> : null}
+                  <AvatarFallback>{initials(displayName)}</AvatarFallback>
+                </Avatar>
+                <div className="space-y-1.5">
+                  <Button variant="outline" size="sm" asChild disabled={savingAvatar}>
+                    <label htmlFor="avatar-upload" className="cursor-pointer">
+                      <Upload aria-hidden />
+                      {savingAvatar ? "Uploading…" : "Upload photo"}
+                    </label>
+                  </Button>
+                  <Input
+                    id="avatar-upload"
+                    type="file"
+                    accept="image/jpeg,image/png"
+                    className="sr-only"
+                    disabled={savingAvatar}
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      event.target.value = "";
+                      if (!file) return;
+
+                      setAvatarError(null);
+                      startSaveAvatar(async () => {
+                        try {
+                          await uploadAvatar(file);
+                          toast.success("Profile photo updated");
+                          router.refresh();
+                        } catch (error) {
+                          setAvatarError(error instanceof Error ? error.message : "Profile photo could not be saved.");
+                        }
+                      });
+                    }}
+                  />
+                  <FieldDescription>Private JPEG or PNG, up to 2 MB.</FieldDescription>
+                  {avatarError ? <FieldError>{avatarError}</FieldError> : null}
+                </div>
+              </div>
+            </Field>
+
             {nameError ? (
               <p className="text-destructive text-sm" role="alert">
                 {nameError}
@@ -213,4 +262,13 @@ export function ProfileForms({
       </Card>
     </div>
   );
+}
+
+function initials(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("") || "U";
 }

@@ -30,7 +30,6 @@ export function NotificationList({
     startTransition(async () => {
       if (!notification.read_at) await markNotificationRead({ notificationId: notification.id });
       router.push(notificationHref(notification));
-      router.refresh();
     });
   };
 

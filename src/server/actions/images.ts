@@ -14,6 +14,10 @@ import {
   markImageUnavailable,
   removeCurrentImage,
 } from "@/server/services/images";
+import {
+  sweepUploadSessions,
+  type ReconcileOutcome,
+} from "@/server/services/upload-reconciliation";
 import { actionResult, type ActionResult } from "@/server/actions/result";
 
 /**
@@ -85,5 +89,25 @@ export async function removeSlotImage(
     revalidatePath(`/cases/${data.caseId}`);
 
     return { imageId: image.id };
+  });
+}
+
+/**
+ * Administrative sweep over upload sessions that were authorized but never
+ * finalized.
+ *
+ * Recovers an orphaned object when its slot is still empty — the image would
+ * otherwise be lost — and deletes the object when the slot has since been
+ * filled or nothing was ever uploaded. A finalized clinical original is never
+ * touched.
+ */
+export async function sweepUploadSessionsAction(): Promise<ActionResult<ReconcileOutcome>> {
+  return actionResult(async () => {
+    const user = await requirePermission("user:manage");
+    const outcome = await sweepUploadSessions({ actorId: user.id });
+
+    revalidatePath("/settings/maintenance");
+
+    return outcome;
   });
 }

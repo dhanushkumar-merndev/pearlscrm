@@ -215,7 +215,8 @@ runtime, fully supported for Next.js 16 — see https://opennext.js.org/cloudfla
    ```
 
    Runtime tunables can be set the same way (`UPLOAD_URL_TTL_SECONDS`,
-   `READ_URL_TTL_SECONDS`, `MAX_IMAGE_BYTES`) or omitted to use the defaults.
+   `READ_URL_TTL_SECONDS`, `MAX_IMAGE_BYTES`, `MAX_AVATAR_BYTES`,
+   `AVATAR_READ_URL_TTL_SECONDS`) or omitted to use the defaults.
 
 3. `NEXT_PUBLIC_*` variables are inlined at build time. Set them in the build
    environment (`.env`) **and** mirror them in `wrangler.jsonc` → `vars`.

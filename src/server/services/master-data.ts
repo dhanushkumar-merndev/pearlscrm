@@ -136,18 +136,59 @@ export async function setMasterValueActive(params: {
   return data as MasterValue;
 }
 
+/** Hard ceiling on an un-paged read, so no caller can ask for the whole table. */
+const MASTER_VALUE_LIST_CAP = 500;
+
 export async function listMasterValues(params: {
   table: MasterTable;
   query?: string;
   includeInactive?: boolean;
+  limit?: number;
 }): Promise<MasterValue[]> {
+  const page = await pageMasterValues({
+    table: params.table,
+    ...(params.query !== undefined ? { query: params.query } : {}),
+    ...(params.includeInactive !== undefined ? { includeInactive: params.includeInactive } : {}),
+    pageSize: Math.min(params.limit ?? MASTER_VALUE_LIST_CAP, MASTER_VALUE_LIST_CAP),
+  });
+
+  return page.rows;
+}
+
+export type MasterValuePage = {
+  rows: MasterValue[];
+  total: number;
+  page: number;
+  pageSize: number;
+  pageCount: number;
+};
+
+/**
+ * One page of a master table, with the exact total.
+ *
+ * The admin screen pages and searches against the database rather than
+ * filtering a fixed slice in the browser: `procedures` already holds several
+ * hundred rows, and a value past the cap that simply never appeared — with
+ * nothing on screen to say so — reads as "that value does not exist".
+ */
+export async function pageMasterValues(params: {
+  table: MasterTable;
+  query?: string;
+  includeInactive?: boolean;
+  page?: number;
+  pageSize?: number;
+}): Promise<MasterValuePage> {
   const supabase = await createSupabaseServerClient();
+
+  const pageSize = Math.min(Math.max(params.pageSize ?? 50, 1), MASTER_VALUE_LIST_CAP);
+  const page = Math.max(params.page ?? 1, 1);
+  const from = (page - 1) * pageSize;
 
   let request = supabase
     .from(params.table)
-    .select("*")
+    .select("*", { count: "exact" })
     .order("display_name", { ascending: true })
-    .limit(500);
+    .range(from, from + pageSize - 1);
 
   if (!params.includeInactive) request = request.eq("is_active", true);
 
@@ -156,10 +197,19 @@ export async function listMasterValues(params: {
     request = request.ilike("normalized_key", `%${escapeLikePattern(normalized)}%`);
   }
 
-  const { data, error } = await request.returns<MasterValue[]>();
+  const { data, error, count } = await request.returns<MasterValue[]>();
   if (error) throw new AppError("INTERNAL", "Could not load master data.");
 
-  return data ?? [];
+  const rows = data ?? [];
+  const total = count ?? rows.length;
+
+  return {
+    rows,
+    total,
+    page,
+    pageSize,
+    pageCount: Math.max(1, Math.ceil(total / pageSize)),
+  };
 }
 
 /** Escapes PostgREST `ilike` wildcards so a typed `%` searches literally. */

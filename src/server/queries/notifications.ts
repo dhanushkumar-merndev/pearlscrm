@@ -1,5 +1,7 @@
 import "server-only";
 
+import { encodeNotificationCursor, type NotificationCursor } from "@/lib/notification-cursor";
+import { AppError } from "@/lib/errors";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type { AppNotification, CaseEditRequestRow } from "@/lib/types";
 
@@ -34,17 +36,69 @@ function flattenNotification({
   };
 }
 
-export async function listNotifications(limit = 30): Promise<AppNotification[]> {
-  const supabase = await createSupabaseServerClient();
+export type NotificationPage = {
+  notifications: AppNotification[];
+  /** Cursor to request the next, older page. */
+  nextCursor: string | null;
+  /** Cursor to return to the preceding, newer page. */
+  previousCursor: string | null;
+};
 
-  const { data } = await supabase
+/**
+ * A cursor page of notification history.
+ *
+ * Offset pagination becomes progressively slower as a recipient's history
+ * grows. This uses `(created_at, id)` as a stable keyset instead, so loading
+ * page 10,000 is the same indexed seek as loading page 2. We intentionally do
+ * not run a total count: counting a million-row feed would add needless work.
+ */
+export async function listNotifications(params: {
+  cursor?: NotificationCursor | null;
+  direction?: "older" | "newer";
+  pageSize?: number;
+} = {}): Promise<NotificationPage> {
+  const supabase = await createSupabaseServerClient();
+  const pageSize = Math.min(Math.max(params.pageSize ?? 30, 10), 100);
+  const direction = params.direction ?? "older";
+  const cursor = params.cursor ?? null;
+
+  let request = supabase
     .from("notifications")
     .select(NOTIFICATION_SELECT)
-    .order("created_at", { ascending: false })
-    .limit(limit)
-    .returns<NotificationJoin[]>();
+    .order("created_at", { ascending: direction === "newer" })
+    .order("id", { ascending: direction === "newer" });
 
-  return (data ?? []).map(flattenNotification);
+  if (cursor) {
+    const createdAt = cursor.createdAt;
+    const id = cursor.id;
+    const comparison = direction === "older" ? "lt" : "gt";
+
+    request = request.or(
+      `created_at.${comparison}.${createdAt},and(created_at.eq.${createdAt},id.${comparison}.${id})`,
+    );
+  }
+
+  const { data, error } = await request.limit(pageSize + 1).returns<NotificationJoin[]>();
+  if (error) throw new AppError("INTERNAL", "Could not load notifications.");
+
+  const hasMoreInDirection = (data?.length ?? 0) > pageSize;
+  const rows = (data ?? []).slice(0, pageSize);
+  if (direction === "newer") rows.reverse();
+
+  const first = rows[0];
+  const last = rows.at(-1);
+
+  return {
+    notifications: rows.map(flattenNotification),
+    nextCursor:
+      last && (direction === "newer" || hasMoreInDirection)
+        ? encodeNotificationCursor({ createdAt: last.created_at, id: last.id })
+        : null,
+    previousCursor:
+      first && (direction === "older" ? Boolean(cursor) : hasMoreInDirection)
+        ? encodeNotificationCursor({ createdAt: first.created_at, id: first.id })
+        : null,
+  };
 }
 
 /** The bell is intentionally an unread queue, rather than a second archive. */

@@ -41,14 +41,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { useRealtime } from "@/hooks/use-realtime";
-import { getCached, invalidateCached, setCached } from "@/lib/client-cache";
+import { getCached, invalidateCached, withCache } from "@/lib/client-cache";
 import { formatClinicDate, formatTimestamp } from "@/lib/dates";
 import { formatBytes } from "@/lib/images";
 import { can } from "@/lib/permissions";
 import { uploadClinicalImage } from "@/lib/upload-client";
-import { getVisitSlots } from "@/server/actions/image-slots";
+import { getVisitImagePanelData } from "@/server/actions/image-slots";
 import { clearSlotUnavailable, markSlotUnavailable, removeSlotImage } from "@/server/actions/images";
-import { getEditAccess } from "@/server/actions/edit-requests";
 import { submitVisitImages } from "@/server/actions/visits";
 import type { CaseVisit, EditAccess, ImageSlot, ImageViewType, RoleCode } from "@/lib/types";
 
@@ -104,6 +103,7 @@ export function VisitImagesPanel({
   // Object URLs are revoked explicitly; a ref keeps them reachable from the
   // unmount cleanup without re-running it on every staging change.
   const previewUrls = useRef(new Set<string>());
+  const realtimeRefreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const mayUpload = !readOnly && !blockedReason && can(role, "image:upload");
   const mayMark = !readOnly && can(role, "image:mark_unavailable");
@@ -132,28 +132,23 @@ export function VisitImagesPanel({
       return;
     }
 
-    const [slotsResult, accessResult] = await Promise.all([
-      getVisitSlots({ visitId: visit.id }),
-      getEditAccess({ caseId, scope: "VISIT_IMAGES", visitId: visit.id }),
-    ]);
+    try {
+      const data = await withCache(cacheKey, async () => {
+        const result = await getVisitImagePanelData({ caseId, visitId: visit.id });
+        if (!result.ok) throw new Error(result.error.message);
+        return result.data;
+      });
 
-    if (!slotsResult.ok) {
-      setError(slotsResult.error.message);
-      return;
-    }
-
-    setSlots(slotsResult.data);
-
-    if (accessResult.ok) {
-      setAccess(accessResult.data);
+      setSlots(data.slots);
+      setAccess(data.access);
 
       // An unsubmitted set is open for editing straight away: the first pass
       // through a visit never needs anyone's approval. Reloading never closes
       // an editing session that is already open — a partly failed save reloads
       // the slots while the clinician still has changes staged.
-      setEditing((current) => current || (!accessResult.data.locked && mayUpload));
-
-      setCached(cacheKey, { slots: slotsResult.data, access: accessResult.data });
+      setEditing((current) => current || (!data.access.locked && mayUpload));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not load image slots.");
     }
   }, [caseId, visit.id, mayUpload, cacheKey]);
 
@@ -162,6 +157,24 @@ export function VisitImagesPanel({
     // All state updates happen inside the awaited `load`.
     void load();
   }, [load]);
+
+  useEffect(() => {
+    return () => {
+      if (realtimeRefreshTimer.current) clearTimeout(realtimeRefreshTimer.current);
+    };
+  }, []);
+
+  const refreshFromRealtime = useCallback(() => {
+    if (saving) return;
+
+    // One image-set save changes multiple rows. Reload once after the burst,
+    // rather than issuing two server actions for every individual row event.
+    if (realtimeRefreshTimer.current) clearTimeout(realtimeRefreshTimer.current);
+    realtimeRefreshTimer.current = setTimeout(() => {
+      realtimeRefreshTimer.current = null;
+      void load({ fresh: true });
+    }, 400);
+  }, [load, saving]);
 
   // Live updates for this visit: another clinician's upload, or the moment an
   // administrator approves an edit, lands here without a manual reload. Skipped
@@ -172,9 +185,7 @@ export function VisitImagesPanel({
       { table: "clinical_images", filter: `visit_id=eq.${visit.id}` },
       { table: "case_edit_requests", filter: `case_id=eq.${caseId}` },
     ],
-    onChange: () => {
-      if (!saving) void load({ fresh: true });
-    },
+    onChange: refreshFromRealtime,
   });
 
   const stagedCount = Object.keys(staged).length;

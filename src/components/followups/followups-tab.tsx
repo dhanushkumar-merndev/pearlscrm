@@ -220,6 +220,7 @@ export function FollowupsTab({
       )}
 
       <FollowupDialog
+        key={dialogVisit === "new" ? "new" : dialogVisit?.id ?? "closed"}
         open={dialogVisit !== null}
         onOpenChange={(open) => !open && setDialogVisit(null)}
         caseId={caseId}

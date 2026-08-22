@@ -59,6 +59,21 @@ export const searchMasterValuesSchema = z.object({
   limit: z.coerce.number().int().min(1).max(50).default(20),
 });
 
+export const updateStoragePlanSchema = z.object({
+  /** Allowance in GB, as typed on the Storage tab. */
+  quotaGb: z.coerce.number().min(0.1).max(1_000_000),
+  costPerGbMonth: z.coerce.number().min(0).max(10_000),
+  currency: z.string().trim().toUpperCase().length(3),
+});
+
+export const pageMasterValuesSchema = z.object({
+  table: masterTableSchema,
+  query: z.string().max(200).optional().default(""),
+  includeInactive: z.coerce.boolean().optional().default(false),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(5).max(200).default(50),
+});
+
 export const setMasterValueActiveSchema = z.object({
   table: masterTableSchema,
   id: uuid,
@@ -176,6 +191,16 @@ export const finalizeUploadSchema = z.object({
 });
 
 export const abandonUploadSchema = z.object({ uploadSessionId: uuid });
+
+// --- Profile avatar ---------------------------------------------------------
+
+export const authorizeAvatarUploadSchema = z.object({
+  filename: z.string().trim().min(1).max(255),
+  mimeType: z.enum(ALLOWED_IMAGE_MIME_TYPES),
+  fileSize: z.coerce.number().int().positive(),
+});
+
+export const finalizeAvatarUploadSchema = z.object({ uploadSessionId: uuid });
 
 export const imageReadUrlSchema = z.object({
   imageId: uuid,

@@ -4,7 +4,7 @@ import Link from "next/link";
 
 import { LogOut, UserRound } from "lucide-react";
 
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -22,16 +22,19 @@ export function UserMenu({
   displayName,
   email,
   role,
+  avatarUrl,
 }: {
   displayName: string;
   email: string | null;
   role: RoleCode;
+  avatarUrl: string | null;
 }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" className="h-9 gap-2 px-2" aria-label="Account menu">
           <Avatar className="size-6">
+            {avatarUrl ? <AvatarImage src={avatarUrl} alt="" /> : null}
             <AvatarFallback className="text-xs">{initials(displayName)}</AvatarFallback>
           </Avatar>
           <span className="hidden max-w-32 truncate text-sm sm:inline">{displayName}</span>

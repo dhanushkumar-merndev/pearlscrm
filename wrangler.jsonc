@@ -21,6 +21,23 @@
     "directory": ".open-next/assets",
     "binding": "ASSETS"
   },
+  "ratelimits": [
+    {
+      "name": "CASE_CREATE_RATE_LIMIT",
+      "namespace_id": "710001",
+      "simple": { "limit": 10, "period": 60 }
+    },
+    {
+      "name": "FOLLOWUP_CREATE_RATE_LIMIT",
+      "namespace_id": "710002",
+      "simple": { "limit": 10, "period": 60 }
+    },
+    {
+      "name": "USER_ACCESS_RATE_LIMIT",
+      "namespace_id": "710003",
+      "simple": { "limit": 10, "period": 60 }
+    }
+  ],
   "vars": {
     "NEXT_PUBLIC_SUPABASE_URL": "https://rhtfiiligsjdqgpnwoxp.supabase.co",
     "NEXT_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJodGZpaWxpZ3NqZHFncG53b3hwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY5NTkxODIsImV4cCI6MjEwMjUzNTE4Mn0.c7ac1wKFMzXRfWWM6qdrNdl2kSMYQnsus0IRgAvmBM8",

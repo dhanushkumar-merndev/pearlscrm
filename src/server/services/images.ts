@@ -236,7 +236,7 @@ export async function authorizeUpload(params: {
   };
 }
 
-type UploadSession = {
+export type UploadSession = {
   id: string;
   case_id: string;
   visit_id: string;
@@ -247,9 +247,99 @@ type UploadSession = {
   expected_file_size: number;
   status: "PENDING" | "FINALIZED" | "ABANDONED";
   created_by: string | null;
+  created_at: string;
   expires_at: string;
   clinical_image_version_id: string | null;
 };
+
+/**
+ * The part of finalization that is independent of *who* asked for it: confirm
+ * the object, then run the atomic RPC.
+ *
+ * Split out so the reconciliation sweep can recover a session whose finalize
+ * call never arrived — a browser that closed, a network that dropped, a Worker
+ * that ran out of CPU — without impersonating the original uploader's request.
+ */
+export async function finalizeSessionRecord(
+  session: UploadSession,
+  actorId: string,
+  sha256?: string,
+): Promise<ClinicalImageVersion> {
+  const admin = createSupabaseAdminClient();
+
+  if (!isWellFormedObjectKey(session.object_key)) {
+    throw new AppError("INTERNAL", "The upload could not be completed.");
+  }
+
+  // A presigned PUT proves nothing on its own — confirm the object exists and
+  // matches what was authorized before any metadata row is written.
+  //
+  // A storage failure here is distinct from "the object is not there": the
+  // former is our problem, the latter is the client's. Collapsing both into one
+  // generic message is what made an earlier batch of failures undiagnosable.
+  let head: Awaited<ReturnType<typeof headObject>>;
+
+  try {
+    head = await headObject(session.object_key);
+  } catch (cause) {
+    logServerError(cause, `finalize:head:${session.id}`);
+    throw new AppError(
+      "INTERNAL",
+      "Secure storage could not confirm the upload. The image is still stored — please try saving again.",
+    );
+  }
+
+  if (!head.exists) {
+    throw validationFailed("The image did not finish uploading. Please try again.");
+  }
+
+  if (head.contentType && head.contentType !== session.expected_mime_type) {
+    await deleteOrphanedObject(session.object_key).catch(() => {});
+    await admin
+      .from("image_upload_sessions")
+      .update({ status: "ABANDONED" })
+      .eq("id", session.id);
+
+    throw validationFailed("The uploaded file did not match the expected image type.");
+  }
+
+  const actualSize = head.contentLength ?? session.expected_file_size;
+
+  if (actualSize > serverEnv().MAX_IMAGE_BYTES) {
+    await deleteOrphanedObject(session.object_key).catch(() => {});
+    throw validationFailed("The uploaded image is larger than the allowed size.");
+  }
+
+  const { data: version, error } = await admin
+    .rpc("finalize_image_upload", {
+      p_session_id: session.id,
+      p_file_size: actualSize,
+      p_sha256: sha256 ?? null,
+      p_actor: actorId,
+    })
+    .single<ClinicalImageVersion>();
+
+  if (error || !version) {
+    // The database's own message is the only thing that identifies *why* a
+    // finalize failed. Discarding it, as this used to, left nothing to debug
+    // from but a correlation id with no matching log line.
+    logServerError(
+      new Error(
+        `finalize_image_upload failed: ${error?.code ?? "no-code"} ${error?.message ?? "no rows returned"}` +
+          (error?.details ? ` | ${error.details}` : "") +
+          (error?.hint ? ` | ${error.hint}` : ""),
+      ),
+      `finalize:rpc:${session.id}`,
+    );
+
+    throw new AppError(
+      "INTERNAL",
+      "The image reached secure storage but could not be recorded against the case. Please try saving again.",
+    );
+  }
+
+  return version;
+}
 
 export async function finalizeUpload(params: {
   user: SessionUser;
@@ -287,80 +377,7 @@ export async function finalizeUpload(params: {
     throw validationFailed("This upload was cancelled. Please upload the image again.");
   }
 
-  if (!isWellFormedObjectKey(session.object_key)) {
-    throw new AppError("INTERNAL", "The upload could not be completed.");
-  }
-
-  // A presigned PUT proves nothing on its own — confirm the object exists and
-  // matches what was authorized before any metadata row is written.
-  //
-  // A storage failure here is distinct from "the object is not there": the
-  // former is our problem, the latter is the client's. Collapsing both into one
-  // generic message is what made an earlier batch of failures undiagnosable.
-  let head: Awaited<ReturnType<typeof headObject>>;
-
-  try {
-    head = await headObject(session.object_key);
-  } catch (cause) {
-    logServerError(cause, `finalize:head:${session.id}`);
-    throw new AppError(
-      "INTERNAL",
-      "Secure storage could not confirm the upload. The image is still stored — please try saving again.",
-    );
-  }
-
-  if (!head.exists) {
-    throw validationFailed(
-      "The image did not finish uploading. Please try again.",
-    );
-  }
-
-  if (head.contentType && head.contentType !== session.expected_mime_type) {
-    await deleteOrphanedObject(session.object_key).catch(() => {});
-    await admin
-      .from("image_upload_sessions")
-      .update({ status: "ABANDONED" })
-      .eq("id", session.id);
-
-    throw validationFailed("The uploaded file did not match the expected image type.");
-  }
-
-  const actualSize = head.contentLength ?? session.expected_file_size;
-
-  if (actualSize > serverEnv().MAX_IMAGE_BYTES) {
-    await deleteOrphanedObject(session.object_key).catch(() => {});
-    throw validationFailed("The uploaded image is larger than the allowed size.");
-  }
-
-  const { data: version, error } = await admin
-    .rpc("finalize_image_upload", {
-      p_session_id: session.id,
-      p_file_size: actualSize,
-      p_sha256: params.sha256 ?? null,
-      p_actor: params.user.id,
-    })
-    .single<ClinicalImageVersion>();
-
-  if (error || !version) {
-    // The database's own message is the only thing that identifies *why* a
-    // finalize failed. Discarding it, as this used to, left nothing to debug
-    // from but a correlation id with no matching log line.
-    logServerError(
-      new Error(
-        `finalize_image_upload failed: ${error?.code ?? "no-code"} ${error?.message ?? "no rows returned"}` +
-          (error?.details ? ` | ${error.details}` : "") +
-          (error?.hint ? ` | ${error.hint}` : ""),
-      ),
-      `finalize:rpc:${session.id}`,
-    );
-
-    throw new AppError(
-      "INTERNAL",
-      "The image reached secure storage but could not be recorded against the case. Please try saving again.",
-    );
-  }
-
-  return version;
+  return finalizeSessionRecord(session, params.user.id, params.sha256);
 }
 
 /**

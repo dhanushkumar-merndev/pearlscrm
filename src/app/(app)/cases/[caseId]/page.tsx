@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
-import { RealtimeRefresh } from "@/components/app/realtime-refresh";
 import { CaseDetailHeader } from "@/components/cases/case-detail-header";
 import { CaseTabs } from "@/components/cases/case-tabs";
 import { requireUser } from "@/server/auth/session";
@@ -65,17 +64,6 @@ export default async function CaseDetailPage({
 
   return (
     <>
-      <RealtimeRefresh
-        channel={`case:${caseId}`}
-        tables={[
-          { table: "cases", filter: `id=eq.${caseId}` },
-          { table: "case_visits", filter: `case_id=eq.${caseId}` },
-          { table: "clinical_images", filter: `case_id=eq.${caseId}` },
-          { table: "case_edit_requests", filter: `case_id=eq.${caseId}` },
-          { table: "case_reviews", filter: `case_id=eq.${caseId}` },
-        ]}
-      />
-
       <CaseDetailHeader detail={detail} role={user.role} accessUsers={accessUsers} />
       <CaseTabs
         detail={detail}

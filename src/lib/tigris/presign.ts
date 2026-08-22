@@ -3,6 +3,7 @@ import "server-only";
 import {
   GetObjectCommand,
   HeadObjectCommand,
+  ListObjectsV2Command,
   PutObjectCommand,
   DeleteObjectCommand,
 } from "@aws-sdk/client-s3";
@@ -71,8 +72,11 @@ export async function presignRead(params: {
   objectKey: string;
   /** Filename offered if the user explicitly downloads. Never patient-identifying. */
   downloadFilename?: string;
+  /** Defaults to the clinical-image TTL. Avatars use a separately bounded seven-day TTL. */
+  expiresInSeconds?: number;
 }): Promise<PresignedRead> {
   const env = serverEnv();
+  const expiresInSeconds = params.expiresInSeconds ?? env.READ_URL_TTL_SECONDS;
 
   const command = new GetObjectCommand({
     Bucket: tigrisBucket(),
@@ -83,13 +87,13 @@ export async function presignRead(params: {
   });
 
   const url = await getSignedUrl(tigrisClient(), command, {
-    expiresIn: env.READ_URL_TTL_SECONDS,
+    expiresIn: expiresInSeconds,
   });
 
   return {
     url,
-    expiresInSeconds: env.READ_URL_TTL_SECONDS,
-    expiresAt: new Date(Date.now() + env.READ_URL_TTL_SECONDS * 1000).toISOString(),
+    expiresInSeconds,
+    expiresAt: new Date(Date.now() + expiresInSeconds * 1000).toISOString(),
   };
 }
 
@@ -137,4 +141,70 @@ export async function deleteOrphanedObject(objectKey: string): Promise<void> {
   await tigrisClient().send(
     new DeleteObjectCommand({ Bucket: tigrisBucket(), Key: objectKey }),
   );
+}
+
+export type StoredObject = {
+  key: string;
+  size: number;
+  lastModified: string | null;
+  storageClass: string | null;
+};
+
+export type BucketListing = {
+  objects: StoredObject[];
+  /** True when the walk stopped at `maxObjects` before the bucket ended. */
+  truncated: boolean;
+};
+
+/**
+ * Walks the bucket and returns what is actually stored.
+ *
+ * This is the only place the application asks Tigris what it holds rather than
+ * inferring it from the database. The two can legitimately disagree — an object
+ * whose finalize was lost exists in one and not the other — and telling an
+ * administrator the truth about storage means reading storage.
+ *
+ * Bounded by `maxObjects`: the caller is told when the walk was cut short
+ * rather than being handed a total that quietly excludes the tail.
+ */
+export async function listBucketObjects(params: {
+  prefix?: string;
+  maxObjects?: number;
+} = {}): Promise<BucketListing> {
+  const client = tigrisClient();
+  const bucket = tigrisBucket();
+  const maxObjects = params.maxObjects ?? 10_000;
+
+  const objects: StoredObject[] = [];
+  let continuationToken: string | undefined;
+
+  do {
+    const response = await client.send(
+      new ListObjectsV2Command({
+        Bucket: bucket,
+        ...(params.prefix ? { Prefix: params.prefix } : {}),
+        MaxKeys: 1000,
+        ...(continuationToken ? { ContinuationToken: continuationToken } : {}),
+      }),
+    );
+
+    for (const item of response.Contents ?? []) {
+      if (!item.Key) continue;
+
+      objects.push({
+        key: item.Key,
+        size: Number(item.Size) || 0,
+        lastModified: item.LastModified ? item.LastModified.toISOString() : null,
+        storageClass: item.StorageClass ?? null,
+      });
+
+      if (objects.length >= maxObjects) {
+        return { objects, truncated: true };
+      }
+    }
+
+    continuationToken = response.IsTruncated ? response.NextContinuationToken : undefined;
+  } while (continuationToken);
+
+  return { objects, truncated: false };
 }

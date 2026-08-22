@@ -8,7 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { auditQuerySchema } from "@/lib/validation/schemas";
 import { requirePermission } from "@/server/auth/session";
 import { AUDIT_ACTION_OPTIONS, listAuditLogs } from "@/server/queries/audit";
-import { listUsers } from "@/server/actions/users";
+import { listUserOptions } from "@/server/actions/users";
 
 export const metadata: Metadata = { title: "Audit Logs" };
 
@@ -16,7 +16,7 @@ export default async function AuditPage({ searchParams }: PageProps<"/audit">) {
   await requirePermission("audit:read");
   const params = await searchParams;
 
-  const users = await listUsers();
+  const users = await listUserOptions();
 
   return (
     <>
@@ -27,7 +27,7 @@ export default async function AuditPage({ searchParams }: PageProps<"/audit">) {
 
       <AuditFilters
         actions={AUDIT_ACTION_OPTIONS}
-        users={users.map((user) => ({ id: user.id, name: user.display_name }))}
+        users={users}
       />
 
       <Suspense key={JSON.stringify(params)} fallback={<Skeleton className="h-96 w-full" />}>

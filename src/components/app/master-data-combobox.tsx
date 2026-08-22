@@ -1,8 +1,10 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { TypeOrCreateCombobox } from "@/components/app/type-or-create-combobox";
+import { CLINICAL_CACHE_TIME_MS } from "@/lib/query-client";
 import { createMasterValueAction, searchMasterValuesAction } from "@/server/actions/master-data";
 import type { MasterTable, MasterValue } from "@/lib/types";
 
@@ -29,19 +31,47 @@ export function MasterDataCombobox({
   id?: string;
   canCreate?: boolean;
 }) {
+  const queryClient = useQueryClient();
+  const defaultOptionsKey = useMemo(
+    () => ["master-data-options", table, props.value ?? "active"] as const,
+    [table, props.value],
+  );
+
   const searchAction = useCallback(
     async (query: string): Promise<MasterValue[]> => {
-      const result = await searchMasterValuesAction({
-        table,
-        query,
-        // Keeps an inactive value visible while editing a historical record.
-        includeInactiveId: props.value ?? undefined,
-      });
+      const load = async () => {
+        const result = await searchMasterValuesAction({
+          table,
+          query,
+          // Keeps an inactive value visible while editing a historical record.
+          includeInactiveId: props.value ?? undefined,
+        });
 
-      if (!result.ok) throw new Error(result.error.message);
-      return result.data.values;
+        if (!result.ok) throw new Error(result.error.message);
+
+        // The server separately verifies the exact normalized match, so it
+        // remains selectable even if a future ranking rule puts it past limit.
+        const exact = result.data.exactMatch;
+        return exact && !result.data.values.some((value) => value.id === exact.id)
+          ? [exact, ...result.data.values]
+          : result.data.values;
+      };
+
+      // Opening a picker shows the same limited default list every time. Cache
+      // it for the active browser session; it is still cleared on hard refresh
+      // and when the signed-in user changes. Typed searches deliberately stay
+      // uncached so each term is checked against current master data.
+      if (!query.trim()) {
+        return queryClient.fetchQuery({
+          queryKey: defaultOptionsKey,
+          queryFn: load,
+          staleTime: CLINICAL_CACHE_TIME_MS,
+        });
+      }
+
+      return load();
     },
-    [table, props.value],
+    [defaultOptionsKey, queryClient, table, props.value],
   );
 
   const createAction = useCallback(
@@ -49,9 +79,22 @@ export function MasterDataCombobox({
       const result = await createMasterValueAction({ table, displayName });
 
       if (!result.ok) throw new Error(result.error.message);
+
+      // Keep existing open/default pickers in sync without throwing away their
+      // one-hour cache. Search terms are not cached and naturally see it too.
+      if (result.data.value.is_active) {
+        queryClient.setQueriesData<MasterValue[]>(
+          { queryKey: ["master-data-options", table] },
+          (current) => {
+            if (!current || current.some((value) => value.id === result.data.value.id)) return current;
+            return [result.data.value, ...current];
+          },
+        );
+      }
+
       return result.data;
     },
-    [table],
+    [queryClient, table],
   );
 
   return (

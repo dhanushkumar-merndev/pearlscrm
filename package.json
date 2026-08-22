@@ -11,7 +11,8 @@
     "test:watch": "vitest",
     "build:cf": "opennextjs-cloudflare build",
     "preview:cf": "opennextjs-cloudflare build && wrangler dev",
-    "deploy:cf": "opennextjs-cloudflare build && wrangler deploy"
+    "deploy:cf": "opennextjs-cloudflare build && wrangler deploy",
+    "test:rls": "vitest run --config vitest.rls.config.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1111.0",
@@ -19,6 +20,7 @@
     "@hookform/resolvers": "^5.9.0",
     "@supabase/ssr": "^0.12.4",
     "@supabase/supabase-js": "^2.112.3",
+    "@tanstack/react-query": "^5.101.4",
     "@tanstack/react-table": "^9.1.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

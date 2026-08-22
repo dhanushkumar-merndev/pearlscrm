@@ -1,6 +1,14 @@
 "use client";
 
-import { Check, Circle, CircleDashed, Scissors } from "lucide-react";
+import {
+  Calendar,
+  Camera,
+  Check,
+  Circle,
+  CircleDashed,
+  Scissors,
+  Sparkles,
+} from "lucide-react";
 
 import { CaseEditRequestsCard } from "@/components/cases/case-edit-requests-card";
 import { Badge } from "@/components/ui/badge";
@@ -81,7 +89,7 @@ export function CaseOverviewTab({
               Built from the actual recorded visit dates, not from fixed follow-up slots.
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="pt-2">
             <Timeline detail={detail} />
           </CardContent>
         </Card>
@@ -186,14 +194,16 @@ function Timeline({ detail }: { detail: CaseDetail }) {
     (detail.summary.after_uploaded_count ?? 0) + (detail.summary.after_not_available_count ?? 0);
 
   return (
-    <ol className="relative space-y-6 border-l pl-6">
+    <ol className="relative ml-3.5 space-y-6 border-l border-border/80 pl-6 pb-1">
       <TimelineEntry
-        icon={<Scissors className="size-3" aria-hidden />}
+        icon={<Scissors className="size-3.5" aria-hidden />}
         title="Surgery"
         meta={formatClinicDate(detail.summary.surgery_date)}
+        complete={Boolean(detail.summary.surgery_date)}
       />
 
       <TimelineEntry
+        icon={<Camera className="size-3.5" aria-hidden />}
         title="Before"
         meta={
           beforeResolved >= standardViews
@@ -204,6 +214,7 @@ function Timeline({ detail }: { detail: CaseDetail }) {
       />
 
       <TimelineEntry
+        icon={<Sparkles className="size-3.5" aria-hidden />}
         title="After"
         meta={
           afterResolved >= standardViews
@@ -214,11 +225,16 @@ function Timeline({ detail }: { detail: CaseDetail }) {
       />
 
       {followups.length === 0 ? (
-        <TimelineEntry title="Follow-ups" meta="No follow-up visits have been added." />
+        <TimelineEntry
+          icon={<Calendar className="size-3.5" aria-hidden />}
+          title="Follow-ups"
+          meta="No follow-up visits have been added."
+        />
       ) : (
         followups.map((visit) => (
           <TimelineEntry
             key={visit.id}
+            icon={<Calendar className="size-3.5" aria-hidden />}
             title={visit.display_label}
             meta={formatClinicDate(visit.visit_date)}
             detail={
@@ -226,6 +242,7 @@ function Timeline({ detail }: { detail: CaseDetail }) {
                 ? `${visit.months_after_surgery} months after surgery`
                 : undefined
             }
+            complete={Boolean(visit.visit_date)}
           />
         ))
       )}
@@ -250,17 +267,20 @@ function TimelineEntry({
     <li className="relative">
       <span
         className={cn(
-          "bg-background absolute -left-[31px] flex size-5 items-center justify-center rounded-full border",
-          complete && "border-emerald-600/50 text-emerald-600 dark:text-emerald-400",
+          "bg-background absolute -left-6 top-0 flex size-6 -translate-x-1/2 items-center justify-center rounded-full border border-border text-muted-foreground shadow-2xs transition-colors",
+          complete && "border-emerald-600/60 bg-emerald-50 text-emerald-600 dark:border-emerald-500/60 dark:bg-emerald-950/40 dark:text-emerald-400",
         )}
         aria-hidden
       >
-        {icon ?? (complete ? <Check className="size-3" /> : null)}
+        {icon}
       </span>
 
-      <p className="text-sm font-medium">{title}</p>
-      <p className="text-muted-foreground text-xs tabular-nums">{meta}</p>
-      {detail ? <p className="text-muted-foreground text-xs">{detail}</p> : null}
+      <div className="space-y-0.5 pt-0.5">
+        <p className="text-sm font-medium leading-none">{title}</p>
+        <p className="text-muted-foreground text-xs tabular-nums">{meta}</p>
+        {detail ? <p className="text-muted-foreground text-xs">{detail}</p> : null}
+      </div>
     </li>
   );
 }
+

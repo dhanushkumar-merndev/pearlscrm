@@ -26,6 +26,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { APP_NAVIGATION_START } from "@/lib/navigation-events";
 import type { MasterValue } from "@/lib/types";
 
 /**
@@ -59,11 +60,26 @@ export function CasesFilters({
 
   const [searchTerm, setSearchTerm] = useState(searchParams.get("q") ?? "");
   const [open, setOpen] = useState(false);
-  const firstRender = useRef(true);
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const navigationInProgress = useRef(false);
+
+  useEffect(() => {
+    const cancelPendingSearch = () => {
+      navigationInProgress.current = true;
+      if (searchTimer.current) clearTimeout(searchTimer.current);
+      searchTimer.current = null;
+    };
+
+    window.addEventListener(APP_NAVIGATION_START, cancelPendingSearch);
+    return () => window.removeEventListener(APP_NAVIGATION_START, cancelPendingSearch);
+  }, []);
 
   const apply = useCallback(
     (updates: Record<string, string | undefined>) => {
-      const next = new URLSearchParams(searchParams.toString());
+      // Read the current URL at the moment of interaction. `useSearchParams`
+      // can be a new object after an unrelated render, which must never turn a
+      // previously scheduled search into another navigation.
+      const next = new URLSearchParams(window.location.search);
 
       for (const [key, value] of Object.entries(updates)) {
         if (!value || value === ANY) next.delete(key);
@@ -73,22 +89,35 @@ export function CasesFilters({
       // Any filter change returns to the first page of results.
       next.delete("page");
 
-      startTransition(() => {
-        router.replace(`${pathname}?${next.toString()}`, { scroll: false });
-      });
+      const nextSearch = next.toString();
+      const nextHref = nextSearch ? `${pathname}?${nextSearch}` : pathname;
+      const currentHref = `${window.location.pathname}${window.location.search}`;
+
+      // A replace to the current route makes Next re-fetch the page. It is a
+      // no-op semantically, so skip it completely.
+      if (nextHref === currentHref) return;
+
+      startTransition(() => router.replace(nextHref, { scroll: false }));
     },
-    [pathname, router, searchParams],
+    [pathname, router],
   );
 
   useEffect(() => {
-    if (firstRender.current) {
-      firstRender.current = false;
-      return;
-    }
+    return () => {
+      if (searchTimer.current) clearTimeout(searchTimer.current);
+      searchTimer.current = null;
+    };
+  }, []);
 
-    const timer = setTimeout(() => apply({ q: searchTerm || undefined }), 350);
-    return () => clearTimeout(timer);
-  }, [searchTerm, apply]);
+  const handleSearchChange = (nextSearchTerm: string) => {
+    setSearchTerm(nextSearchTerm);
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+
+    searchTimer.current = setTimeout(() => {
+      searchTimer.current = null;
+      if (!navigationInProgress.current) apply({ q: nextSearchTerm || undefined });
+    }, 350);
+  };
 
   const value = (key: string) => searchParams.get(key) ?? ANY;
 
@@ -123,7 +152,7 @@ export function CasesFilters({
                 className="pl-9"
                 placeholder="Case ID, procedure or type"
                 value={searchTerm}
-                onChange={(event) => setSearchTerm(event.target.value)}
+                onChange={(event) => handleSearchChange(event.target.value)}
               />
             </div>
           </div>
