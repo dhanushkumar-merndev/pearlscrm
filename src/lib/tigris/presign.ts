@@ -32,7 +32,8 @@ export type PresignedUpload = {
 
 export async function presignUpload(params: {
   objectKey: string;
-  mimeType: AllowedImageMimeType;
+  /** Clinical images, or a prescription document (PDF/JPEG/PNG). */
+  mimeType: AllowedImageMimeType | "application/pdf";
   contentLength: number;
 }): Promise<PresignedUpload> {
   const env = serverEnv();

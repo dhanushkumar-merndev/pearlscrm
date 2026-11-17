@@ -20,8 +20,9 @@ export function tigrisClient(): S3Client {
   cached = new S3Client({
     region: env.TIGRIS_REGION,
     endpoint: env.TIGRIS_ENDPOINT,
-    // Tigris is S3-compatible and expects virtual-hosted style addressing.
-    forcePathStyle: false,
+    // Tigris expects virtual-hosted style addressing. A local S3 emulator on
+    // localhost/127.0.0.1 (development only) cannot use bucket subdomains.
+    forcePathStyle: isLocalEndpoint(env.TIGRIS_ENDPOINT),
     credentials: {
       accessKeyId: env.TIGRIS_ACCESS_KEY_ID,
       secretAccessKey: env.TIGRIS_SECRET_ACCESS_KEY,
@@ -29,6 +30,11 @@ export function tigrisClient(): S3Client {
   });
 
   return cached;
+}
+
+function isLocalEndpoint(endpoint: string): boolean {
+  const host = new URL(endpoint).hostname;
+  return host === "localhost" || host === "127.0.0.1";
 }
 
 export function tigrisBucket(): string {

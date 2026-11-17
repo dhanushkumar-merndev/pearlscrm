@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 
 import { PageHeader } from "@/components/app/page-header";
 import { ProfileForms } from "@/components/app/profile-forms";
+import { PushSettingsCard } from "@/components/notifications/push-settings";
 import { requireUser } from "@/server/auth/session";
 import { getAvatarReadUrl } from "@/server/services/avatar";
 
@@ -24,6 +25,8 @@ export default async function ProfilePage() {
         role={user.role}
         avatarUrl={avatarUrl}
       />
+
+      <PushSettingsCard />
     </>
   );
 }

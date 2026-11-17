@@ -19,6 +19,8 @@ export type ChecklistItem = {
 };
 
 export function buildChecklist(facts: CaseCompletionFacts): ChecklistItem[] {
+  if (facts.treatment_mode === "SESSIONS") return sessionChecklist(facts);
+
   return [
     {
       key: "case_information",
@@ -83,6 +85,48 @@ export function buildChecklist(facts: CaseCompletionFacts): ChecklistItem[] {
         facts.followup_count > 0
           ? `${facts.followup_count} follow-up visit${facts.followup_count === 1 ? "" : "s"} recorded`
           : "No follow-up visits recorded yet",
+    },
+  ];
+}
+
+/**
+ * A course of sessions (laser, injectables, …). Every session already proves
+ * its own Before and After photos before it can close, so the course is
+ * complete when the planned sessions are done and consent is recorded. Case
+ * notes and expert review stay available but do not gate a session course.
+ */
+function sessionChecklist(facts: CaseCompletionFacts): ChecklistItem[] {
+  const planned = facts.sessions_planned ?? 0;
+  const completed = facts.sessions_completed ?? 0;
+
+  return [
+    {
+      key: "case_information",
+      label: "Treatment plan",
+      done: facts.case_information,
+      required: true,
+      detail: "Procedure, number of sessions and start date",
+    },
+    {
+      key: "sessions",
+      label: "Sessions",
+      done: Boolean(facts.sessions),
+      required: true,
+      detail: `${completed} of ${planned} planned session${planned === 1 ? "" : "s"} completed with Before and After photos`,
+    },
+    {
+      key: "consent",
+      label: "Consent",
+      done: facts.consent,
+      required: true,
+      detail: "Image use consent explicitly recorded",
+    },
+    {
+      key: "case_notes",
+      label: "Case notes",
+      done: facts.case_notes,
+      required: false,
+      detail: "Optional for session-based treatments",
     },
   ];
 }

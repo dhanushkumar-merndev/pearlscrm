@@ -28,8 +28,11 @@ type ProfileJoin = {
 /**
  * The authenticated user plus their profile/role, or null.
  *
- * Deliberately uses `getUser()` rather than `getSession()`: the former verifies
- * the JWT with Supabase, the latter trusts a cookie the browser can edit.
+ * Uses `getClaims()`, which verifies the access token's signature against the
+ * project's asymmetric signing keys (cached JWKS) — never trusting an
+ * unverified cookie like `getSession()` would — without a network round trip
+ * to Supabase Auth on every request. Disabling an account still takes effect
+ * immediately: `profiles.is_active` is read from the database every time.
  *
  * De-duplicated per request via `cache` so a page rendering several server
  * components pays for one round trip.
@@ -37,12 +40,12 @@ type ProfileJoin = {
 export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
   const supabase = await createSupabaseServerClient();
 
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
+  const { data, error } = await supabase.auth.getClaims();
+  const claims = data?.claims;
 
-  if (error || !user) return null;
+  if (error || !claims?.sub) return null;
+
+  const user = { id: claims.sub, email: typeof claims.email === "string" && claims.email ? claims.email : undefined };
 
   const { data: profile } = await supabase
     .from("profiles")

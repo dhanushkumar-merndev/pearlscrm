@@ -30,7 +30,7 @@ pnpm install
 ### 1. Database (Supabase)
 
 1. Create a Supabase project.
-2. Apply the migrations in order from `supabase/migrations/0001` to `0016`, then run
+2. Apply the migrations in order from `supabase/migrations/0001` to the latest (`0034`), then run
    `supabase/seed.sql` (reference data only — roles, image views, procedure types,
    follow-up presets; no fake cases).
    ```bash
@@ -67,6 +67,27 @@ Fill every variable:
 | `TIGRIS_REGION` | Tigris console (e.g. `auto`) |
 | `TIGRIS_BUCKET` | The private bucket name |
 | `TIGRIS_ACCESS_KEY_ID` / `TIGRIS_SECRET_ACCESS_KEY` | Tigris → Application Keys |
+| `NEXT_PUBLIC_FIREBASE_*` (API key, auth domain, project id, sender id, app id) | Firebase Console → Project settings → Your apps → Web app (same project as the Sales CRM) |
+| `NEXT_PUBLIC_FIREBASE_VAPID_KEY` | Firebase Console → Project settings → Cloud Messaging → Web Push certificates → Generate key pair |
+| `FCM_PROJECT_ID` / `FCM_SERVICE_ACCOUNT_JSON` | Same service account the Sales CRM uses (**server only**) |
+| `PUSH_DISPATCH_SECRET` | `openssl rand -hex 32` — must match the Vault secret below (**server only**) |
+
+Push turns itself off (no errors) while any Firebase value is missing.
+
+### Patients, reminders and push (migrations 0031–0034)
+
+These need two Postgres extensions and two Vault secrets in the Supabase project:
+
+1. Database → Extensions: enable **pg_cron** and **pg_net** (the migrations also try to
+   `create extension if not exists`).
+2. SQL editor, once per environment:
+   ```sql
+   select vault.create_secret('https://<your-deployed-origin>', 'push_site_url');
+   select vault.create_secret('<same value as PUSH_DISPATCH_SECRET>', 'push_dispatch_secret');
+   ```
+   Without them notifications still appear in the bell; only browser push is skipped.
+3. Set each staff member's **home branch** in Users & Access — surgery reminders go to
+   the surgeon plus the branch's active doctors and admins.
 
 Never commit a filled `.env`. Only `NEXT_PUBLIC_*` values may reach the browser.
 
@@ -183,6 +204,14 @@ pnpm test         # unit tests (Vitest)
 pnpm test:watch
 ```
 
+Role-based RLS checks for patients, treatments, reminders and push live in
+`supabase/tests/patients_rls.sql`. It creates its own fixtures inside a transaction and
+rolls back, but run it **only against a local or disposable database**:
+
+```bash
+psql "$LOCAL_DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/patients_rls.sql
+```
+
 Unit suites cover case number formatting, master-value normalization, follow-up interval
 suggestions, completion logic, the role/permission matrix, and date handling. RLS deny
 tests are run against a real Supabase project with the service role key (see
@@ -212,6 +241,9 @@ runtime, fully supported for Next.js 16 — see https://opennext.js.org/cloudfla
    pnpm dlx wrangler secret put TIGRIS_BUCKET
    pnpm dlx wrangler secret put TIGRIS_ACCESS_KEY_ID
    pnpm dlx wrangler secret put TIGRIS_SECRET_ACCESS_KEY
+   pnpm dlx wrangler secret put FCM_PROJECT_ID
+   pnpm dlx wrangler secret put FCM_SERVICE_ACCOUNT_JSON
+   pnpm dlx wrangler secret put PUSH_DISPATCH_SECRET
    ```
 
    Runtime tunables can be set the same way (`UPLOAD_URL_TTL_SECONDS`,

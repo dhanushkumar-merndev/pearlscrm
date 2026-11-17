@@ -17,6 +17,11 @@ import { z } from "zod";
 const optionalNumber = (schema: z.ZodTypeAny) =>
   z.preprocess((value) => (value === "" || value === undefined ? undefined : value), schema.optional());
 
+const optionalString = z.preprocess(
+  (value) => (value === "" || value === undefined ? undefined : value),
+  z.string().optional(),
+) as z.ZodType<string | undefined>;
+
 const serverEnvSchema = z.object({
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1, "SUPABASE_SERVICE_ROLE_KEY is required"),
 
@@ -61,6 +66,20 @@ const serverEnvSchema = z.object({
     (value) => (value === "" || value === undefined ? undefined : value),
     z.string().length(3).default("USD"),
   ) as z.ZodType<string>,
+
+  /**
+   * Firebase Cloud Messaging sender for web push. Same Firebase project and
+   * service account as the Pearl Sales CRM. All optional: when unset, push is
+   * off and notifications stay in the in-app bell only.
+   */
+  FCM_PROJECT_ID: optionalString,
+  /** The service account key file's JSON, on one line. */
+  FCM_SERVICE_ACCOUNT_JSON: optionalString,
+  /** Shared secret Supabase sends in `x-push-secret` when it asks for a push. */
+  PUSH_DISPATCH_SECRET: z.preprocess(
+    (value) => (value === "" || value === undefined ? undefined : value),
+    z.string().min(32, "PUSH_DISPATCH_SECRET must be at least 32 characters").optional(),
+  ) as z.ZodType<string | undefined>,
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;

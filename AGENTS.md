@@ -115,7 +115,12 @@ Do NOT use:
 - separate Express backend
 - separate NestJS backend
 - VPS
-- Firebase
+- Firebase Auth, Firestore, Firebase Storage, Firebase Analytics or the Firebase Admin SDK
+
+**Exception (approved, see §76):** Firebase Cloud Messaging for **web push only**,
+using the same Firebase project as the Pearl Sales CRM. The server sends through the
+FCM HTTP v1 API with a WebCrypto-signed token; the browser uses `firebase/messaging`
+only to obtain a token. No Android/iOS apps.
 
 ## Hosting
 
@@ -1486,7 +1491,11 @@ Do not put patient names, phone numbers, email addresses, addresses, or unrelate
 - logs
 - analytics
 
-Do not introduce patient-identification fields unless explicitly requested later.
+Patient identity (name, phone, age, sex) was explicitly requested later and now lives
+in the `patients` table — see §76. The list above still applies to it in full: it never
+appears in object keys, generated filenames, URLs, page titles, logs, analytics, audit
+metadata or push notification text. Only the patient pages and the patient search
+render it.
 
 Never make a case public merely because consent for image use is `Yes`.
 
@@ -2453,6 +2462,9 @@ to the MVP unless explicitly requested.
 
 If a future requirement adds patient identification, handle it as a separate security/privacy change.
 
+**Superseded by §76:** the clinic requested a patient record (name, phone, age, sex) with
+branch File IDs. Email, address and DOB are still not collected.
+
 ---
 
 # 64. Expert Review
@@ -2978,4 +2990,74 @@ No additional UI framework.
 
 Build the application according to this document unless an explicit later instruction changes a requirement.
 
+---
 
+# 76. Patients, Branch File IDs, Treatments & Reminders (approved later requirement)
+
+The clinic asked for a full patient workflow on top of the case library. These rules
+override earlier sections where they conflict.
+
+## Patients and File IDs
+
+- Branches: `BG` Brigade Road, `KL` Koramangala, `SH` Sahakara Nagar (admins can add
+  more in Settings → Branches; never deleted, only disabled).
+- Every patient gets an automatic, per-branch **File ID**: code + at least 4 digits
+  (`BG0001`, `KL0012`). Allocated in `next_file_id()` under a row lock: never
+  `MAX()+1`. A branch code already used in File IDs is frozen by trigger.
+- `patients` stores name, phone, sex and age (with the date the age was recorded).
+  Internal keys stay UUIDs; URLs use the UUID, page titles show the File ID only.
+- Referral: referred-by doctor (or free-text source) and referred-for procedure. It is
+  shown as an always-visible reminder on the patient page for every doctor.
+- **Read access:** active ADMIN and DOCTOR users at *every* branch (any doctor types a
+  File ID and sees the full history). VIEWER never reads patient data. Opening a
+  patient from another branch is audited (`PATIENT_HISTORY_VIEWED`).
+- Writes only through SECURITY DEFINER RPCs called by server actions.
+
+## Consultations, prescriptions, notes
+
+- `patient_consultations`: first visit (created with the patient) and later visits.
+- Prescriptions: `patient_documents` (PDF/JPEG/PNG ≤ 10 MB) in the same private Tigris
+  bucket under `patients/{patient_uuid}/documents/{document_uuid}/original.{ext}`,
+  same authorize → direct PUT → idempotent finalize flow as clinical images. Immutable.
+- `patient_notes`: append-only doctor comments with optional next-visit date.
+
+## Treatments
+
+- A treatment is a `cases` row linked to a patient. Each keeps its own case number from
+  its procedure's prefix (`RH-0001`, `LHR-0001`; default `TX-`), set in Settings.
+- `treatment_mode`: `SURGICAL` (Before/After/follow-ups as before; status `PLANNED`
+  until a surgery date is set) or `SESSIONS` (planned session count + start date).
+- **Before & After photos are compulsory for every session**:
+  `complete_treatment_session()` refuses until both session views are uploaded
+  (NOT_AVAILABLE counts only when an admin set it). The UI explains; the database
+  enforces.
+- Cross-branch doctors may *read* patient-linked treatments; writes still require
+  assignment (`case_is_writable` / `requireCaseWriteAccess`).
+
+## Mark for Surgery and reminders
+
+- `mark_case_for_surgery()` sets date and surgeon, grants the surgeon access, and
+  schedules two reminders: 18:00 the evening before and 08:00 on the day
+  (`clinic.timezone`, default `Asia/Kolkata`). Already-passed times are skipped.
+- `pg_cron` runs `dispatch_due_reminders()` every 5 minutes. Recipients: the surgeon and
+  active ADMIN/DOCTOR users whose home branch (`profiles.branch_id`) is the treatment's.
+
+## Web push
+
+- Every `notifications` insert triggers a `pg_net` POST to `/api/push/dispatch`, signed
+  with a shared secret stored in Supabase Vault (`push_site_url`,
+  `push_dispatch_secret`). The route sends via FCM HTTP v1 to the user's web tokens.
+- Push text carries File ID, procedure, case number, branch and date, **never the
+  patient's name or phone**.
+
+
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->

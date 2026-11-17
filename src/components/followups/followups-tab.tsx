@@ -46,7 +46,8 @@ export function FollowupsTab({
   readOnly,
 }: {
   caseId: string;
-  surgeryDate: string;
+  /** Null while a surgical treatment is still PLANNED (no surgery date yet). */
+  surgeryDate: string | null;
   followups: CaseVisit[];
   viewTypes: ImageViewType[];
   role: RoleCode;
@@ -96,7 +97,8 @@ export function FollowupsTab({
     });
   };
 
-  const mayCreate = !readOnly && can(role, "visit:create");
+  // Intervals are measured from surgery, so follow-ups wait for a surgery date.
+  const mayCreate = !readOnly && surgeryDate !== null && can(role, "visit:create");
   const mayEdit = !readOnly && can(role, "visit:update");
   const mayDelete = !readOnly && can(role, "visit:delete");
 
@@ -219,14 +221,16 @@ export function FollowupsTab({
         </Tabs>
       )}
 
-      <FollowupDialog
-        key={dialogVisit === "new" ? "new" : dialogVisit?.id ?? "closed"}
-        open={dialogVisit !== null}
-        onOpenChange={(open) => !open && setDialogVisit(null)}
-        caseId={caseId}
-        surgeryDate={surgeryDate}
-        visit={dialogVisit === "new" ? null : dialogVisit}
-      />
+      {surgeryDate ? (
+        <FollowupDialog
+          key={dialogVisit === "new" ? "new" : dialogVisit?.id ?? "closed"}
+          open={dialogVisit !== null}
+          onOpenChange={(open) => !open && setDialogVisit(null)}
+          caseId={caseId}
+          surgeryDate={surgeryDate}
+          visit={dialogVisit === "new" ? null : dialogVisit}
+        />
+      ) : null}
 
       {requestVisit ? (
         <RequestEditDialog

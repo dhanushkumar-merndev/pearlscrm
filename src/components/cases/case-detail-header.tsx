@@ -6,7 +6,11 @@ import { useRouter } from "next/navigation";
 import {
   Archive,
   ArchiveRestore,
+  BellRing,
+  CalendarClock,
+  CalendarX,
   CheckCircle2,
+  Link2,
   Lock,
   MoreHorizontal,
   Pencil,
@@ -16,7 +20,10 @@ import {
 import { toast } from "sonner";
 
 import { CaseStatusBadge, ConsentBadge, ReviewBadge } from "@/components/app/status-badges";
+import { type DoctorChoice } from "@/components/app/doctor-select";
 import { EditCaseDialog } from "@/components/cases/edit-case-dialog";
+import { LinkPatientDialog } from "@/components/patients/link-patient-dialog";
+import { MarkSurgeryDialog } from "@/components/cases/mark-surgery-dialog";
 import { ManageCaseAccessDialog } from "@/components/cases/manage-case-access-dialog";
 import { RequestEditDialog } from "@/components/cases/request-edit-dialog";
 import {
@@ -51,10 +58,13 @@ import { formatClinicDate } from "@/lib/dates";
 import { completionPercent, isComplete } from "@/lib/completion";
 import { can } from "@/lib/permissions";
 import { archiveCase, markCaseCompleted, reopenCase, restoreCase } from "@/server/actions/cases";
+import { cancelSurgery } from "@/server/actions/treatments";
+import { formatClinicDateTime } from "@/lib/reminders";
+import { todayIsoDate } from "@/lib/dates";
 import { getEditAccess } from "@/server/actions/edit-requests";
 import type { CaseDetail } from "@/server/queries/cases";
 import type { CaseAccessUser } from "@/server/queries/case-access";
-import type { RoleCode } from "@/lib/types";
+import type { RoleCode, SurgeryReminder } from "@/lib/types";
 
 /**
  * Case header.
@@ -66,10 +76,14 @@ export function CaseDetailHeader({
   detail,
   role,
   accessUsers,
+  doctors,
+  reminders,
 }: {
   detail: CaseDetail;
   role: RoleCode;
   accessUsers: CaseAccessUser[] | null;
+  doctors: DoctorChoice[];
+  reminders: SurgeryReminder[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -77,11 +91,25 @@ export function CaseDetailHeader({
   const [editing, setEditing] = useState(false);
   const [requesting, setRequesting] = useState(false);
   const [managingAccess, setManagingAccess] = useState(false);
+  const [schedulingSurgery, setSchedulingSurgery] = useState(false);
+  const [linking, setLinking] = useState(false);
+  const [confirmCancelSurgery, setConfirmCancelSurgery] = useState(false);
 
   const { summary, completion, consentState, review } = detail;
   const percent = completionPercent(completion);
   const complete = isComplete(completion);
   const archived = Boolean(summary.archived_at);
+  const surgical = summary.treatment_mode === "SURGICAL";
+  const surgeonName = summary.surgeon_id
+    ? (doctors.find((d) => d.id === summary.surgeon_id)?.display_name ?? null)
+    : null;
+  // Once surgery has happened its date anchors every follow-up interval.
+  const surgeryChangeable =
+    surgical &&
+    !archived &&
+    summary.status !== "COMPLETED" &&
+    (summary.surgery_date === null || summary.surgery_date >= todayIsoDate());
+  const mayScheduleSurgery = surgeryChangeable && can(role, "surgery:schedule");
 
   /**
    * Case information locks when the case is created. Clicking Edit asks the
@@ -129,11 +157,29 @@ export function CaseDetailHeader({
     <div className="space-y-4">
       <Breadcrumb>
         <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <Link href="/cases">Cases</Link>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
+          {summary.patient_id && summary.file_id ? (
+            <>
+              <BreadcrumbItem>
+                <BreadcrumbLink asChild>
+                  <Link href="/patients">Patients</Link>
+                </BreadcrumbLink>
+              </BreadcrumbItem>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                <BreadcrumbLink asChild>
+                  <Link href={`/patients/${summary.patient_id}`} className="tabular-nums">
+                    {summary.file_id}
+                  </Link>
+                </BreadcrumbLink>
+              </BreadcrumbItem>
+            </>
+          ) : (
+            <BreadcrumbItem>
+              <BreadcrumbLink asChild>
+                <Link href="/cases">Cases</Link>
+              </BreadcrumbLink>
+            </BreadcrumbItem>
+          )}
           <BreadcrumbSeparator />
           <BreadcrumbItem>
             <BreadcrumbPage>{summary.case_number}</BreadcrumbPage>
@@ -155,17 +201,52 @@ export function CaseDetailHeader({
               <dt>Procedure:</dt>
               <dd className="text-foreground font-medium">{summary.procedure_name}</dd>
             </div>
-            <div className="flex gap-1.5">
-              <dt>Type:</dt>
-              <dd className="text-foreground font-medium">{summary.procedure_type_name}</dd>
-            </div>
-            <div className="flex gap-1.5">
-              <dt>Surgery:</dt>
-              <dd className="text-foreground font-medium tabular-nums">
-                {formatClinicDate(summary.surgery_date)}
-              </dd>
-            </div>
+            {surgical ? (
+              <>
+                <div className="flex gap-1.5">
+                  <dt>Type:</dt>
+                  <dd className="text-foreground font-medium">{summary.procedure_type_name ?? "—"}</dd>
+                </div>
+                <div className="flex gap-1.5">
+                  <dt>Surgery:</dt>
+                  <dd className="text-foreground font-medium tabular-nums">
+                    {summary.surgery_date ? formatClinicDate(summary.surgery_date) : "Not scheduled"}
+                  </dd>
+                </div>
+                {surgeonName ? (
+                  <div className="flex gap-1.5">
+                    <dt>Surgeon:</dt>
+                    <dd className="text-foreground font-medium">{surgeonName}</dd>
+                  </div>
+                ) : null}
+              </>
+            ) : (
+              <>
+                <div className="flex gap-1.5">
+                  <dt>Sessions:</dt>
+                  <dd className="text-foreground font-medium tabular-nums">
+                    {summary.completed_sessions} of {summary.planned_sessions ?? "—"}
+                  </dd>
+                </div>
+                <div className="flex gap-1.5">
+                  <dt>Started:</dt>
+                  <dd className="text-foreground font-medium tabular-nums">
+                    {formatClinicDate(summary.start_date)}
+                  </dd>
+                </div>
+              </>
+            )}
           </dl>
+
+          {reminders.length > 0 ? (
+            <p className="text-muted-foreground flex flex-wrap items-center gap-1.5 text-xs">
+              <BellRing className="size-3.5" aria-hidden />
+              Reminders:{" "}
+              {reminders
+                .map((r) => `${r.kind === "DAY_BEFORE" ? "evening before" : "morning of"} (${formatClinicDateTime(new Date(r.remind_at))})`)
+                .join(" · ")}
+            </p>
+          ) : null}
 
           {detail.tags.length > 0 ? (
             <div className="flex flex-wrap gap-2">
@@ -179,6 +260,13 @@ export function CaseDetailHeader({
         </div>
 
         <div className="flex items-start gap-4">
+          {mayScheduleSurgery ? (
+            <Button variant={summary.surgery_date ? "outline" : "default"} onClick={() => setSchedulingSurgery(true)}>
+              <CalendarClock aria-hidden />
+              {summary.surgery_date ? "Reschedule surgery" : "Mark for surgery"}
+            </Button>
+          ) : null}
+
           <div className="w-44 space-y-1.5">
             <div className="flex items-baseline justify-between">
               <span className="text-muted-foreground text-xs">Case completion</span>
@@ -202,7 +290,21 @@ export function CaseDetailHeader({
                 </DropdownMenuItem>
               ) : null}
 
-              {can(role, "case:update") && !archived ? (
+              {mayScheduleSurgery && summary.surgery_date ? (
+                <DropdownMenuItem disabled={pending} onSelect={() => setConfirmCancelSurgery(true)}>
+                  <CalendarX aria-hidden />
+                  Cancel scheduled surgery
+                </DropdownMenuItem>
+              ) : null}
+
+              {can(role, "patient:link_case") && !summary.patient_id ? (
+                <DropdownMenuItem onSelect={() => setLinking(true)}>
+                  <Link2 aria-hidden />
+                  Link to patient
+                </DropdownMenuItem>
+              ) : null}
+
+              {can(role, "case:update") && !archived && surgical && summary.surgery_date ? (
                 <DropdownMenuItem disabled={pending} onSelect={beginEdit}>
                   {summary.information_locked_at ? <Lock aria-hidden /> : <Pencil aria-hidden />}
                   Edit case information
@@ -263,6 +365,48 @@ export function CaseDetailHeader({
         tags={detail.tags}
         role={role}
       />
+
+      {mayScheduleSurgery ? (
+        <MarkSurgeryDialog
+          key={schedulingSurgery ? "open" : "closed"}
+          open={schedulingSurgery}
+          onOpenChange={setSchedulingSurgery}
+          caseId={summary.id}
+          caseNumber={summary.case_number}
+          currentDate={summary.surgery_date}
+          currentSurgeonId={summary.surgeon_id}
+          doctors={doctors}
+        />
+      ) : null}
+
+      {linking ? (
+        <LinkPatientDialog
+          open={linking}
+          onOpenChange={setLinking}
+          caseId={summary.id}
+          caseNumber={summary.case_number}
+        />
+      ) : null}
+
+      <AlertDialog open={confirmCancelSurgery} onOpenChange={setConfirmCancelSurgery}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancel the surgery on {formatClinicDate(summary.surgery_date)}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The treatment goes back to Planned and its pending reminders are cancelled. Mark it
+              for surgery again when a new date is agreed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep surgery</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => run("Surgery cancelled", () => cancelSurgery({ caseId: summary.id }))}
+            >
+              Cancel surgery
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <RequestEditDialog
         open={requesting}

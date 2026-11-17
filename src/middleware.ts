@@ -20,6 +20,10 @@ import { createServerClient } from "@supabase/ssr";
 const PUBLIC_PATHS = [
   "/sign-in",
   "/auth/sign-out",
+  // Push service worker: browsers re-fetch it in the background without a page.
+  "/firebase-messaging-sw.js",
+  // Called by Postgres (pg_net) with a shared secret, never with a session.
+  "/api/push/dispatch",
 ];
 
 function isPublicPath(pathname: string): boolean {
@@ -50,9 +54,11 @@ export async function middleware(request: NextRequest) {
     },
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // getClaims() verifies the access token's signature locally against the
+  // project's cached JWKS (ES256) and refreshes an expired session, instead of
+  // a round trip to Supabase Auth on every navigation and prefetch.
+  const { data: claimsData } = await supabase.auth.getClaims();
+  const user = claimsData?.claims?.sub ? { id: claimsData.claims.sub } : null;
 
   const { pathname, search } = request.nextUrl;
 

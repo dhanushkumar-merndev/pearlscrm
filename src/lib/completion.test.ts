@@ -133,3 +133,34 @@ describe("followupMaturity", () => {
     });
   });
 });
+describe("session-based treatments", () => {
+  const SESSIONS: CaseCompletionFacts = {
+    ...COMPLETE_FACTS,
+    before_images: false,
+    after_images: false,
+    expert_review: false,
+    case_notes: false,
+    treatment_mode: "SESSIONS",
+    sessions_planned: 6,
+    sessions_total: 6,
+    sessions_completed: 6,
+    sessions: true,
+  };
+
+  it("is complete when the planned sessions are done and consent is recorded", () => {
+    expect(isComplete(SESSIONS)).toBe(true);
+    expect(buildChecklist(SESSIONS).find((i) => i.key === "sessions")?.detail).toBe(
+      "6 of 6 planned sessions completed with Before and After photos",
+    );
+  });
+
+  it("is not complete while sessions remain or consent is missing", () => {
+    expect(isComplete({ ...SESSIONS, sessions_completed: 3, sessions: false })).toBe(false);
+    expect(isComplete({ ...SESSIONS, consent: false })).toBe(false);
+  });
+
+  it("does not require surgical photo sets or expert review", () => {
+    const required = buildChecklist(SESSIONS).filter((i) => i.required).map((i) => i.key);
+    expect(required).toEqual(["case_information", "sessions", "consent"]);
+  });
+});

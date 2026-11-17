@@ -9,6 +9,8 @@ import { CaseReviewTab } from "@/components/cases/case-review-tab";
 import { CaseAuditTab } from "@/components/cases/case-audit-tab";
 import { VisitImagesPanel } from "@/components/clinical-images/visit-images-panel";
 import { FollowupsTab } from "@/components/followups/followups-tab";
+import { SessionsTab } from "@/components/sessions/sessions-tab";
+import { type DoctorChoice } from "@/components/app/doctor-select";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { can } from "@/lib/permissions";
@@ -31,10 +33,14 @@ export function CaseTabs({
   notesEditAccess,
   maxImageBytes,
   reviewComments,
+  sessionViewTypes,
+  doctors,
   initialTab = "overview",
 }: {
   detail: CaseDetail;
   viewTypes: ImageViewType[];
+  sessionViewTypes: ImageViewType[];
+  doctors: DoctorChoice[];
   role: RoleCode;
   currentUserId: string;
   notesEditAccess: EditAccess;
@@ -56,6 +62,9 @@ export function CaseTabs({
   const reviewCompleted = detail.review?.status === "COMPLETED";
   const showReview = can(role, "review:read") || reviewCompleted;
   const archived = Boolean(detail.summary.archived_at);
+  const sessionsMode = detail.summary.treatment_mode === "SESSIONS";
+  const sessionCount = detail.visits.filter((visit) => visit.visit_type === "SESSION").length;
+  const surgicalTabs = new Set(["before", "after", "followups"]);
 
   // A `?tab=` deep link can name a tab this user cannot see — a notification
   // linking to the review, followed later by an account whose role changed.
@@ -63,6 +72,8 @@ export function CaseTabs({
   const [tab, setTab] = useState(() => {
     if (initialTab === "review" && !showReview) return "overview";
     if (initialTab === "audit" && !showAudit) return "overview";
+    if (sessionsMode && surgicalTabs.has(initialTab)) return "sessions";
+    if (!sessionsMode && initialTab === "sessions") return "overview";
     return initialTab;
   });
 
@@ -75,14 +86,25 @@ export function CaseTabs({
       <div className="overflow-x-auto overflow-y-hidden">
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="before">Before</TabsTrigger>
-          <TabsTrigger value="after">After</TabsTrigger>
-          <TabsTrigger value="followups">
-            Follow-ups
-            {followups.length > 0 ? (
-              <span className="text-muted-foreground ml-1 tabular-nums">({followups.length})</span>
-            ) : null}
-          </TabsTrigger>
+          {sessionsMode ? (
+            <TabsTrigger value="sessions">
+              Sessions
+              <span className="text-muted-foreground ml-1 tabular-nums">
+                ({sessionCount}/{detail.summary.planned_sessions ?? "—"})
+              </span>
+            </TabsTrigger>
+          ) : (
+            <>
+              <TabsTrigger value="before">Before</TabsTrigger>
+              <TabsTrigger value="after">After</TabsTrigger>
+              <TabsTrigger value="followups">
+                Follow-ups
+                {followups.length > 0 ? (
+                  <span className="text-muted-foreground ml-1 tabular-nums">({followups.length})</span>
+                ) : null}
+              </TabsTrigger>
+            </>
+          )}
           <TabsTrigger value="notes">Case Notes</TabsTrigger>
           <TabsTrigger value="consent">Consent</TabsTrigger>
           {showReview ? <TabsTrigger value="review">Expert Review</TabsTrigger> : null}
@@ -99,6 +121,20 @@ export function CaseTabs({
           onNavigate={setTab}
         />
       </TabsContent>
+
+      {sessionsMode ? (
+        <TabsContent value="sessions">
+          <SessionsTab
+            detail={detail}
+            sessionViewTypes={sessionViewTypes}
+            doctors={doctors}
+            role={role}
+            currentUserId={currentUserId}
+            maxImageBytes={maxImageBytes}
+            readOnly={archived}
+          />
+        </TabsContent>
+      ) : null}
 
       <TabsContent value="before">
         {beforeVisit ? (

@@ -9,6 +9,9 @@
   //   wrangler secret put TIGRIS_BUCKET
   //   wrangler secret put TIGRIS_ACCESS_KEY_ID
   //   wrangler secret put TIGRIS_SECRET_ACCESS_KEY
+  //   wrangler secret put FCM_PROJECT_ID
+  //   wrangler secret put FCM_SERVICE_ACCOUNT_JSON
+  //   wrangler secret put PUSH_DISPATCH_SECRET
   //
   // NEXT_PUBLIC_* variables are inlined by Next.js at build time, so they must
   // be present in the build environment (CI variables or the shell running
@@ -41,7 +44,16 @@
   "vars": {
     "NEXT_PUBLIC_SUPABASE_URL": "https://rhtfiiligsjdqgpnwoxp.supabase.co",
     "NEXT_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJodGZpaWxpZ3NqZHFncG53b3hwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY5NTkxODIsImV4cCI6MjEwMjUzNTE4Mn0.c7ac1wKFMzXRfWWM6qdrNdl2kSMYQnsus0IRgAvmBM8",
-    "NEXT_PUBLIC_SITE_URL": "https://pearls-crm.pearlsasthetic.workers.dev"
+    "NEXT_PUBLIC_SITE_URL": "https://pearls-crm.pearlsasthetic.workers.dev",
+    // Firebase web push (public by design — shipped to the browser). Same
+    // Firebase project as the Sales CRM. The VAPID key comes from Firebase
+    // Console → Cloud Messaging → Web Push certificates; push stays off until set.
+    "NEXT_PUBLIC_FIREBASE_API_KEY": "AIzaSyDWQflkWQCiPcwwaRooxRt8qg5xXdTYvJc",
+    "NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN": "pearl-aesthetic-e137a.firebaseapp.com",
+    "NEXT_PUBLIC_FIREBASE_PROJECT_ID": "pearl-aesthetic-e137a",
+    "NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID": "909146826827",
+    "NEXT_PUBLIC_FIREBASE_APP_ID": "1:909146826827:web:2a080ee42612941f7705ce",
+    "NEXT_PUBLIC_FIREBASE_VAPID_KEY": ""
   },
   "observability": {
     "enabled": true

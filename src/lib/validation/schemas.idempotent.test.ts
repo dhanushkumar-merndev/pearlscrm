@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  addPatientNoteSchema,
   addReviewCommentSchema,
+  addSessionSchema,
+  createPatientSchema,
+  createTreatmentSchema,
+  procedureNumberingSchema,
   createCaseSchema,
   createFollowupSchema,
   decideEditRequestSchema,
@@ -116,5 +121,58 @@ describe("form schemas are safe to parse twice", () => {
       caseId: CASE_ID,
       body: "The dorsal reduction reads as 2 mm here; it was closer to 4.",
     });
+  });
+});
+
+describe("patient and treatment schemas are safe to parse twice", () => {
+  const BRANCH = "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d";
+
+  it("createPatient — minimal and full", () => {
+    expectStable(createPatientSchema, { branchId: BRANCH, fullName: "  Asha   R  " });
+    expectStable(createPatientSchema, {
+      branchId: BRANCH,
+      fullName: "Asha R",
+      phone: " 98450 12345 ",
+      sex: "FEMALE",
+      ageYears: "34",
+      referredById: CASE_ID,
+      referralSource: "",
+      referredForProcedureId: TYPE_ID,
+      referralNote: "",
+      firstVisitDate: "2026-11-17",
+      consultationNotes: "Line one\r\nline two",
+      nextVisitDate: "",
+    });
+  });
+
+  it("createTreatment — sessions and surgical", () => {
+    expectStable(createTreatmentSchema, {
+      patientId: CASE_ID,
+      procedureId: TYPE_ID,
+      mode: "SESSIONS",
+      plannedSessions: "6",
+      startDate: "2026-11-20",
+      surgeryDate: "",
+    });
+    expectStable(createTreatmentSchema, {
+      patientId: CASE_ID,
+      procedureId: TYPE_ID,
+      procedureTypeId: TYPE_ID,
+      mode: "SURGICAL",
+      plannedSessions: "",
+    });
+  });
+
+  it("addPatientNote, addSession, procedure numbering", () => {
+    expectStable(addPatientNoteSchema, { patientId: CASE_ID, body: " Review in 2 weeks ", nextVisitDate: "" });
+    expectStable(addSessionSchema, { caseId: CASE_ID, visitDate: "2026-11-20", observation: "" });
+    expectStable(procedureNumberingSchema, { procedureId: CASE_ID, casePrefix: "lhr", defaultMode: "SESSIONS" });
+    expectStable(procedureNumberingSchema, { procedureId: CASE_ID, casePrefix: "", defaultMode: null });
+  });
+
+  it("rejects what the database would reject", () => {
+    expect(() => createTreatmentSchema.parse({ patientId: CASE_ID, procedureId: TYPE_ID, mode: "SESSIONS" })).toThrow();
+    expect(() => createPatientSchema.parse({ branchId: BRANCH, fullName: "A", phone: "abc" })).toThrow();
+    expect(procedureNumberingSchema.parse({ procedureId: CASE_ID, casePrefix: "rh-" }).casePrefix).toBe("RH-");
   });
 });

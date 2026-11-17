@@ -15,6 +15,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ROLE_LABELS } from "@/lib/permissions";
+import { disablePush } from "@/lib/push/client";
 import { signOut } from "@/server/actions/auth";
 import type { RoleCode } from "@/lib/types";
 
@@ -61,7 +62,13 @@ export function UserMenu({
 
         <DropdownMenuSeparator />
 
-        <form action={signOut}>
+        <form
+          action={async () => {
+            // Stop this browser receiving the next person's notifications.
+            await disablePush();
+            await signOut();
+          }}
+        >
           <button type="submit" className="w-full">
             <DropdownMenuItem asChild>
               <span className="cursor-pointer">

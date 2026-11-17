@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { requireCaseWriteAccess } from "@/server/services/case-write-access";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { AppError, notFound, validationFailed } from "@/lib/errors";
 import { monthsAfterSurgery } from "@/lib/followup";
@@ -270,6 +271,8 @@ export async function submitVisitImages(
     if (visit.case_id !== data.caseId) {
       throw validationFailed("That visit does not belong to this case.");
     }
+
+    await requireCaseWriteAccess(data.caseId);
 
     // Same ordering rule the upload path enforces, repeated here so a direct
     // submit cannot close an After phase the Before phase has not reached yet.

@@ -9,6 +9,7 @@ import {
   ScrollText,
   Settings,
   ShieldCheck,
+  UserRound,
   Users,
 } from "lucide-react";
 
@@ -37,6 +38,7 @@ type NavItem = {
 
 const CLINICAL_NAV: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/patients", label: "Patients", icon: UserRound, permission: "patient:read" },
   { href: "/cases", label: "Cases", icon: FolderOpen },
 ];
 
@@ -98,7 +100,7 @@ export function AppSidebar({ role }: { role: RoleCode }) {
           <SidebarGroupLabel>Clinical</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu className="gap-1">
-              {CLINICAL_NAV.map((item) => (
+              {CLINICAL_NAV.filter((item) => !item.permission || can(role, item.permission)).map((item) => (
                 <NavLink
                   key={item.href}
                   item={item}

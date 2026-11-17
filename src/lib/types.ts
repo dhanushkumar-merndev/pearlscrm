@@ -6,11 +6,22 @@
 export const ROLE_CODES = ["ADMIN", "DOCTOR", "VIEWER"] as const;
 export type RoleCode = (typeof ROLE_CODES)[number];
 
-export const CASE_STATUSES = ["ACTIVE", "COMPLETED", "ARCHIVED"] as const;
+/** PLANNED: a surgical treatment that has no surgery date yet. */
+export const CASE_STATUSES = ["PLANNED", "ACTIVE", "COMPLETED", "ARCHIVED"] as const;
 export type CaseStatus = (typeof CASE_STATUSES)[number];
 
-export const VISIT_TYPES = ["BEFORE", "AFTER", "FOLLOW_UP"] as const;
+export const VISIT_TYPES = ["BEFORE", "AFTER", "FOLLOW_UP", "SESSION"] as const;
 export type VisitType = (typeof VISIT_TYPES)[number];
+
+/** SURGICAL: one operation with Before/After/follow-ups. SESSIONS: a course of sessions. */
+export const TREATMENT_MODES = ["SURGICAL", "SESSIONS"] as const;
+export type TreatmentMode = (typeof TREATMENT_MODES)[number];
+
+export const SESSION_STATUSES = ["SCHEDULED", "COMPLETED"] as const;
+export type SessionStatus = (typeof SESSION_STATUSES)[number];
+
+export const PATIENT_SEXES = ["FEMALE", "MALE", "OTHER"] as const;
+export type PatientSex = (typeof PATIENT_SEXES)[number];
 
 /** Scopes that lock after submission and re-open only with admin approval. */
 export const EDIT_SCOPES = [
@@ -75,6 +86,8 @@ export type MasterValue = {
   created_at: string;
   updated_at: string;
   months_after_surgery?: number | null;
+  /** procedures only: the usual way this procedure is delivered. */
+  default_mode?: "SURGICAL" | "SESSIONS" | null;
 };
 
 export type Profile = {
@@ -90,6 +103,8 @@ export type ProfileWithRole = Profile & {
   role_code: RoleCode;
   role_name: string;
   case_visibility_scope: "ALL" | "SELECTED";
+  /** Home branch: decides who gets that branch's surgery reminders. */
+  branch_id?: string | null;
   email?: string | null;
   last_sign_in_at?: string | null;
 };
@@ -101,14 +116,27 @@ export type ImageViewType = {
   sort_order: number;
   is_standard: boolean;
   is_active: boolean;
+  /** CLINICAL views (the six standard ones) or SESSION views (Before/After treatment). */
+  applies_to?: "CLINICAL" | "SESSION";
 };
 
-export type CaseRow = {
+/** Fields every treatment carries on top of the original case columns. */
+type TreatmentFields = {
+  patient_id: string | null;
+  branch_id: string | null;
+  treatment_mode: TreatmentMode;
+  planned_sessions: number | null;
+  start_date: string | null;
+  surgeon_id: string | null;
+  surgery_marked_at: string | null;
+};
+
+export type CaseRow = TreatmentFields & {
   id: string;
   case_number: string;
   procedure_id: string;
-  procedure_type_id: string;
-  surgery_date: string;
+  procedure_type_id: string | null;
+  surgery_date: string | null;
   status: CaseStatus;
   followup_availability: string | null;
   information_locked_at: string | null;
@@ -120,14 +148,14 @@ export type CaseRow = {
   version: number;
 };
 
-export type CaseListRow = {
+export type CaseListRow = TreatmentFields & {
   id: string;
   case_number: string;
   procedure_id: string;
   procedure_name: string;
-  procedure_type_id: string;
-  procedure_type_name: string;
-  surgery_date: string;
+  procedure_type_id: string | null;
+  procedure_type_name: string | null;
+  surgery_date: string | null;
   status: CaseStatus;
   followup_availability: string | null;
   information_locked_at: string | null;
@@ -152,6 +180,12 @@ export type CaseListRow = {
   standard_view_count: number;
   /** Tag ids on the case, so the list can filter by tag inside PostgreSQL. */
   tag_ids: string[];
+  /** Null for viewers (patients RLS) and for cases not yet linked to a patient. */
+  file_id: string | null;
+  branch_code: string | null;
+  completed_sessions: number;
+  session_count: number;
+  next_session_date: string | null;
 };
 
 export type CaseVisit = {
@@ -166,6 +200,13 @@ export type CaseVisit = {
   details_locked_at: string | null;
   /** Set when the visit's image set was submitted; null means never submitted. */
   images_locked_at: string | null;
+  /** SESSION visits only. */
+  session_number?: number | null;
+  session_status?: SessionStatus | null;
+  doctor_id?: string | null;
+  next_visit_date?: string | null;
+  completed_at?: string | null;
+  completed_by?: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -316,6 +357,12 @@ export type CaseCompletionFacts = {
   case_notes: boolean;
   consent: boolean;
   expert_review: boolean;
+  /** Added in 0032; absent on facts from an older database. */
+  treatment_mode?: TreatmentMode;
+  sessions_planned?: number | null;
+  sessions_total?: number;
+  sessions_completed?: number;
+  sessions?: boolean;
 };
 
 export type ConsentState = "YES" | "NO" | "NOT_RECORDED";
@@ -386,4 +433,91 @@ export type EditAccess = {
   grantId: string | null;
   /** Set when a request for this scope is already awaiting a decision. */
   pendingRequestId: string | null;
+};
+
+export type Branch = {
+  id: string;
+  code: string;
+  name: string;
+  is_active: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+};
+
+/** `patient_list_view`: readable by active ADMIN and DOCTOR users only. */
+export type PatientListRow = {
+  id: string;
+  file_id: string;
+  branch_id: string;
+  branch_code: string;
+  branch_name: string;
+  full_name: string;
+  phone: string | null;
+  sex: PatientSex | null;
+  age_years: number | null;
+  age_recorded_on: string | null;
+  referred_by_id: string | null;
+  referred_by_name: string | null;
+  referral_source: string | null;
+  referred_for_procedure_id: string | null;
+  referred_for_name: string | null;
+  referral_note: string | null;
+  first_visit_date: string | null;
+  archived_at: string | null;
+  created_at: string;
+  updated_at: string;
+  version: number;
+  active_treatments: number;
+  total_treatments: number;
+  last_visit_date: string | null;
+  next_visit_date: string | null;
+};
+
+export type PatientConsultation = {
+  id: string;
+  patient_id: string;
+  branch_id: string;
+  doctor_id: string | null;
+  visit_date: string;
+  is_first_visit: boolean;
+  notes: string | null;
+  next_visit_date: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PatientNote = {
+  id: string;
+  patient_id: string;
+  case_id: string | null;
+  author_id: string | null;
+  body: string;
+  next_visit_date: string | null;
+  created_at: string;
+};
+
+export type PatientDocument = {
+  id: string;
+  patient_id: string;
+  consultation_id: string | null;
+  kind: "PRESCRIPTION" | "OTHER";
+  original_filename: string | null;
+  mime_type: string;
+  file_size: number;
+  uploaded_by: string | null;
+  uploaded_at: string;
+  superseded_at: string | null;
+};
+
+export type SurgeryReminder = {
+  id: string;
+  case_id: string;
+  kind: "DAY_BEFORE" | "MORNING_OF";
+  surgery_date: string;
+  remind_at: string;
+  status: "PENDING" | "SENT" | "CANCELLED" | "EXPIRED";
+  sent_at: string | null;
+  recipient_count: number | null;
 };

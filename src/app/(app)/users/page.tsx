@@ -5,6 +5,7 @@ import { InviteUserDialog } from "@/components/users/invite-user-dialog";
 import { UsersTable } from "@/components/users/users-table";
 import { requirePermission } from "@/server/auth/session";
 import { listUsers } from "@/server/actions/users";
+import { listBranches } from "@/server/queries/patients";
 
 export const metadata: Metadata = { title: "Users & Access" };
 
@@ -15,7 +16,7 @@ export default async function UsersPage({ searchParams }: PageProps<"/users">) {
   const raw = Array.isArray(params.page) ? params.page[0] : params.page;
   const page = Math.max(1, Number.parseInt(raw ?? "1", 10) || 1);
 
-  const result = await listUsers({ page });
+  const [result, branches] = await Promise.all([listUsers({ page }), listBranches()]);
 
   return (
     <>
@@ -25,7 +26,7 @@ export default async function UsersPage({ searchParams }: PageProps<"/users">) {
         actions={<InviteUserDialog />}
       />
 
-      <UsersTable result={result} currentUserId={actor.id} />
+      <UsersTable result={result} currentUserId={actor.id} branches={branches} />
     </>
   );
 }

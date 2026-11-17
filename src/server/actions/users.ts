@@ -209,7 +209,7 @@ export async function listUsers(
   const { data: profiles, count } = await supabase
     .from("profiles")
     .select(
-      "id, display_name, role_id, is_active, case_visibility_scope, created_at, updated_at, roles(code, name)",
+      "id, display_name, role_id, is_active, case_visibility_scope, branch_id, created_at, updated_at, roles(code, name)",
       { count: "exact" },
     )
     .order("display_name", { ascending: true })
@@ -233,6 +233,7 @@ export async function listUsers(
       role_code: row.roles?.code ?? "VIEWER",
       role_name: row.roles?.name ?? "Viewer",
       case_visibility_scope: row.case_visibility_scope,
+      branch_id: row.branch_id ?? null,
       email: authById.get(row.id)?.email ?? null,
       last_sign_in_at: authById.get(row.id)?.lastSignInAt ?? null,
     })),

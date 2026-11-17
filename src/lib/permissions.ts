@@ -52,6 +52,21 @@ export const PERMISSIONS = {
 
   "user:manage": ["ADMIN"],
   "audit:read": ["ADMIN"],
+
+  // Patients carry identity (name, phone), so Viewers never see them. Any
+  // doctor at any branch can look a patient up by File ID and add to the
+  // history; changing a treatment itself still needs assignment.
+  "patient:read": ["ADMIN", "DOCTOR"],
+  "patient:create": ["ADMIN", "DOCTOR"],
+  "patient:update": ["ADMIN", "DOCTOR"],
+  "patient:link_case": ["ADMIN"],
+  "consultation:record": ["ADMIN", "DOCTOR"],
+  "prescription:upload": ["ADMIN", "DOCTOR"],
+  "patient_note:create": ["ADMIN", "DOCTOR"],
+  "treatment:create": ["ADMIN", "DOCTOR"],
+  "session:record": ["ADMIN", "DOCTOR"],
+  "surgery:schedule": ["ADMIN", "DOCTOR"],
+  "branch:manage": ["ADMIN"],
 } as const satisfies Record<string, readonly RoleCode[]>;
 
 export type Permission = keyof typeof PERMISSIONS;

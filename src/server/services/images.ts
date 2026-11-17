@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { requireCaseWriteAccess } from "@/server/services/case-write-access";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { AppError, forbidden, logServerError, notFound, validationFailed } from "@/lib/errors";
 import { serverEnv } from "@/lib/env/server";
@@ -14,7 +15,7 @@ import { deleteOrphanedObject, headObject, presignRead, presignUpload } from "@/
 import { recordAudit } from "@/server/services/audit";
 import { requireEditAccess } from "@/server/services/edit-access";
 import type { SessionUser } from "@/server/auth/session";
-import type { ClinicalImage, ClinicalImageVersion } from "@/lib/types";
+import type { ClinicalImage, ClinicalImageVersion, VisitType } from "@/lib/types";
 
 /**
  * Clinical image storage service.
@@ -68,6 +69,9 @@ async function validateUploadContext(params: {
     throw validationFailed("This case is archived. Restore it before uploading images.");
   }
 
+  // Reading a treatment (cross-branch history) is not the same as writing it.
+  await requireCaseWriteAccess(params.caseId);
+
   const { data: visit } = await supabase
     .from("case_visits")
     .select("id, case_id, display_label, visit_type")
@@ -76,7 +80,7 @@ async function validateUploadContext(params: {
       id: string;
       case_id: string;
       display_label: string;
-      visit_type: "BEFORE" | "AFTER" | "FOLLOW_UP";
+      visit_type: VisitType;
     }>();
 
   if (!visit) throw notFound("This visit could not be found.");
@@ -103,11 +107,18 @@ async function validateUploadContext(params: {
 
   const { data: viewType } = await supabase
     .from("image_view_types")
-    .select("id, is_active")
+    .select("id, is_active, applies_to")
     .eq("id", params.viewTypeId)
-    .maybeSingle<{ id: string; is_active: boolean }>();
+    .maybeSingle<{ id: string; is_active: boolean; applies_to: "CLINICAL" | "SESSION" }>();
 
   if (!viewType?.is_active) throw notFound("That image view is not available.");
+
+  // Session photos (Before/After treatment) belong to session visits only, and
+  // the six clinical views never to a session.
+  const expected = visit.visit_type === "SESSION" ? "SESSION" : "CLINICAL";
+  if (viewType.applies_to !== expected) {
+    throw validationFailed("That image view does not belong to this visit.");
+  }
 
   const { data: existing } = await supabase
     .from("clinical_images")

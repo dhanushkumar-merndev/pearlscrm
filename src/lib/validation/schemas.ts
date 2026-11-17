@@ -464,3 +464,199 @@ export const auditQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(5).max(100).default(50),
 });
+
+// --- Patients, treatments, sessions, surgery ---------------------------------
+//
+// Same idempotence rule as above: every transform's output must parse again
+// unchanged, because the browser and the server both run these.
+
+const optionalUuid = uuid.nullish().transform((value) => value ?? null);
+const optionalIsoDate = z
+  .union([isoDate, z.literal("")])
+  .nullish()
+  .transform((value) => (value ? value : null));
+
+export const patientSexSchema = z.enum(["FEMALE", "MALE", "OTHER"]);
+
+const patientName = z
+  .string()
+  .transform((value) => value.replace(/\s+/g, " ").trim())
+  .pipe(z.string().min(1, "Enter the patient's name").max(200, "Use 200 characters or fewer"));
+
+const patientPhone = z
+  .string()
+  .transform((value) => value.replace(/\s+/g, " ").trim())
+  .pipe(
+    z
+      .string()
+      .regex(/^$|^[0-9+() -]{6,20}$/, "Enter a phone number using digits, spaces, + ( ) or -"),
+  )
+  .nullish()
+  .transform((value) => (value ? value : null));
+
+const ageYears = z
+  .union([z.coerce.number().int().min(0, "Age cannot be negative").max(120, "Check the age"), z.literal("")])
+  .nullish()
+  .transform((value) => (value === "" || value == null ? null : value));
+
+const patientIdentity = {
+  fullName: patientName,
+  phone: patientPhone,
+  sex: patientSexSchema.nullish().transform((value) => value ?? null),
+  ageYears,
+  referredById: optionalUuid,
+  referralSource: optionalText(200),
+  referredForProcedureId: optionalUuid,
+  referralNote: optionalNarrative(1000),
+};
+
+export const createPatientSchema = z
+  .object({
+    branchId: uuid,
+    ...patientIdentity,
+    firstVisitDate: optionalIsoDate,
+    consultationNotes: optionalNarrative(10000),
+    nextVisitDate: optionalIsoDate,
+  })
+  .refine(
+    (value) => !value.nextVisitDate || !value.firstVisitDate || value.nextVisitDate >= value.firstVisitDate,
+    { path: ["nextVisitDate"], message: "The next visit cannot be before the first visit" },
+  );
+
+export const updatePatientSchema = z.object({
+  patientId: uuid,
+  expectedVersion: z.coerce.number().int().min(1),
+  ...patientIdentity,
+});
+
+export const patientListQuerySchema = z.object({
+  q: z.string().trim().max(100).optional().default(""),
+  branchId: uuid.optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(5).max(100).default(20),
+});
+
+export const recordConsultationSchema = z
+  .object({
+    patientId: uuid,
+    branchId: uuid,
+    visitDate: isoDate,
+    notes: optionalNarrative(10000),
+    nextVisitDate: optionalIsoDate,
+  })
+  .refine((value) => !value.nextVisitDate || value.nextVisitDate >= value.visitDate, {
+    path: ["nextVisitDate"],
+    message: "The next visit cannot be before this visit",
+  });
+
+export const addPatientNoteSchema = z.object({
+  patientId: uuid,
+  caseId: optionalUuid,
+  body: narrative(5000).pipe(z.string().min(1, "Write the note before saving")),
+  nextVisitDate: optionalIsoDate,
+});
+
+export const treatmentModeSchema = z.enum(["SURGICAL", "SESSIONS"]);
+
+export const createTreatmentSchema = z
+  .object({
+    patientId: uuid,
+    branchId: optionalUuid,
+    procedureId: uuid,
+    procedureTypeId: optionalUuid,
+    mode: treatmentModeSchema,
+    plannedSessions: z
+      .union([z.coerce.number().int().min(1, "At least one session").max(100, "Up to 100 sessions"), z.literal("")])
+      .nullish()
+      .transform((value) => (value === "" || value == null ? null : value)),
+    startDate: optionalIsoDate,
+    surgeryDate: optionalIsoDate,
+    consultationId: optionalUuid,
+    followupAvailability: optionalText(200),
+    tagIds: z.array(uuid).max(20).default([]),
+  })
+  .superRefine((value, ctx) => {
+    if (value.mode === "SURGICAL" && !value.procedureTypeId) {
+      ctx.addIssue({ code: "custom", path: ["procedureTypeId"], message: "Choose the procedure type" });
+    }
+    if (value.mode === "SESSIONS") {
+      if (!value.plannedSessions) {
+        ctx.addIssue({ code: "custom", path: ["plannedSessions"], message: "How many sessions are planned?" });
+      }
+      if (!value.startDate) {
+        ctx.addIssue({ code: "custom", path: ["startDate"], message: "Choose the start date" });
+      }
+    }
+  });
+
+export const addSessionSchema = z
+  .object({
+    caseId: uuid,
+    visitDate: isoDate,
+    doctorId: optionalUuid,
+    observation: optionalNarrative(10000),
+    nextVisitDate: optionalIsoDate,
+  })
+  .refine((value) => !value.nextVisitDate || value.nextVisitDate >= value.visitDate, {
+    path: ["nextVisitDate"],
+    message: "The next visit cannot be before this session",
+  });
+
+export const completeSessionSchema = z.object({ caseId: uuid, visitId: uuid });
+
+export const markForSurgerySchema = z.object({
+  caseId: uuid,
+  surgeryDate: isoDate,
+  surgeonId: uuid,
+});
+
+export const cancelSurgerySchema = z.object({ caseId: uuid });
+
+export const linkCaseToPatientSchema = z.object({ caseId: uuid, patientId: uuid });
+
+export const branchSchema = z.object({
+  code: z
+    .string()
+    .transform((value) => value.trim().toUpperCase())
+    .pipe(z.string().regex(/^[A-Z]{2,4}$/, "Use 2–4 capital letters, e.g. BG")),
+  name: z
+    .string()
+    .transform((value) => value.replace(/\s+/g, " ").trim())
+    .pipe(z.string().min(1, "Enter the branch name").max(120)),
+});
+
+export const updateBranchSchema = branchSchema.extend({
+  branchId: uuid,
+  isActive: z.boolean(),
+});
+
+export const setUserBranchSchema = z.object({ userId: uuid, branchId: optionalUuid });
+
+export const procedureNumberingSchema = z.object({
+  procedureId: uuid,
+  // Blank means "use the default TX- prefix"; "rh" and "RH-" both become "RH-".
+  casePrefix: z
+    .string()
+    .nullish()
+    .transform((value) => {
+      const trimmed = (value ?? "").trim().toUpperCase().replace(/-+$/, "");
+      return trimmed ? `${trimmed}-` : null;
+    })
+    .pipe(z.string().regex(/^[A-Z]{1,5}-$/, "Use 1–5 capital letters, e.g. RH or LHR").nullable()),
+  defaultMode: treatmentModeSchema.nullish().transform((value) => value ?? null),
+});
+
+export const authorizeDocumentUploadSchema = z.object({
+  patientId: uuid,
+  consultationId: optionalUuid,
+  kind: z.enum(["PRESCRIPTION", "OTHER"]).default("PRESCRIPTION"),
+  filename: z.string().trim().min(1).max(255),
+  mimeType: z.enum(["application/pdf", "image/jpeg", "image/png"]),
+  fileSize: z.coerce.number().int().min(1),
+});
+
+export const finalizeDocumentUploadSchema = z.object({
+  uploadSessionId: uuid,
+  sha256: z.string().regex(/^[0-9a-f]{64}$/).optional(),
+});
+export type PatientListQuery = z.infer<typeof patientListQuerySchema>;

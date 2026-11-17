@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { requireCaseWriteAccess } from "@/server/services/case-write-access";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { AppError, conflict, forbidden, notFound, validationFailed } from "@/lib/errors";
 import {
@@ -59,6 +60,8 @@ export async function requestCaseEdit(
     const data = requestCaseEditSchema.parse(input);
 
     const target = targetFor(data);
+    // An approval would be useless to someone the case is not assigned to.
+    await requireCaseWriteAccess(data.caseId);
     const access = await resolveEditAccess(user, target);
 
     // Nothing to ask for: the scope has never been submitted, or the user is an

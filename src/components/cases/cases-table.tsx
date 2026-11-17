@@ -95,6 +95,7 @@ export function CasesTable({
           <TableHeader>
             <TableRow>
               <SortHeader column="case_number" query={query} onSort={toggleSort} />
+              <TableHead className="hidden sm:table-cell">File ID</TableHead>
               <TableHead>Procedure</TableHead>
               <TableHead className="hidden md:table-cell">Type</TableHead>
               <SortHeader column="surgery_date" query={query} onSort={toggleSort} className="hidden lg:table-cell" />
@@ -122,12 +123,30 @@ export function CasesTable({
                   </Link>
                 </TableCell>
 
+                <TableCell className="hidden tabular-nums sm:table-cell">
+                  {row.file_id && row.patient_id ? (
+                    <Link href={`/patients/${row.patient_id}`} className="hover:underline">
+                      {row.file_id}
+                    </Link>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
+                </TableCell>
+
                 <TableCell className="max-w-48 truncate">{row.procedure_name}</TableCell>
 
-                <TableCell className="hidden md:table-cell">{row.procedure_type_name}</TableCell>
+                <TableCell className="hidden md:table-cell">
+                  {row.treatment_mode === "SESSIONS"
+                    ? `Sessions ${row.completed_sessions}/${row.planned_sessions ?? "—"}`
+                    : (row.procedure_type_name ?? "—")}
+                </TableCell>
 
                 <TableCell className="hidden tabular-nums lg:table-cell">
-                  {formatClinicDate(row.surgery_date)}
+                  {row.treatment_mode === "SESSIONS"
+                    ? <span className="text-muted-foreground">—</span>
+                    : row.surgery_date
+                      ? formatClinicDate(row.surgery_date)
+                      : <span className="text-muted-foreground">Not scheduled</span>}
                 </TableCell>
 
                 <TableCell className="hidden lg:table-cell">

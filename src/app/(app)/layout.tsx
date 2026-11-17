@@ -3,6 +3,9 @@ import { redirect } from "next/navigation";
 import { AppSidebar } from "@/components/app/app-sidebar";
 import { NavigationEventDispatcher } from "@/components/app/navigation-event-dispatcher";
 import { NotificationBell } from "@/components/app/notification-bell";
+import { PatientSearchCommand } from "@/components/patients/patient-search-command";
+import { can } from "@/lib/permissions";
+import { PushPrompt } from "@/components/notifications/push-settings";
 import { QueryProvider } from "@/components/app/query-provider";
 import { UserMenu } from "@/components/app/user-menu";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
@@ -45,12 +48,17 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
         <SidebarInset>
           <header className="bg-background sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b px-4 md:px-8 lg:px-10">
             <SidebarTrigger className="-ml-1" />
-            <div className="flex-1" />
+            <div className="flex flex-1 items-center">
+              {can(user.role, "patient:read") ? <PatientSearchCommand /> : null}
+            </div>
             <NotificationBell userId={user.id} />
             <UserMenu displayName={user.displayName} email={user.email} role={user.role} avatarUrl={avatarUrl} />
           </header>
 
-          <div className="flex flex-1 flex-col gap-6 px-4 py-4 md:px-8 md:py-6 lg:px-10 lg:py-8">{children}</div>
+          <div className="flex flex-1 flex-col gap-6 px-4 py-4 md:px-8 md:py-6 lg:px-10 lg:py-8">
+            <PushPrompt />
+            {children}
+          </div>
         </SidebarInset>
       </QueryProvider>
     </SidebarProvider>

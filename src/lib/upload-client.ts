@@ -121,7 +121,7 @@ async function authorize(body: {
  * XHR rather than fetch: it is still the only way to observe upload progress
  * reliably across browsers.
  */
-function putObject(params: {
+export function putObject(params: {
   url: string;
   file: File;
   headers: Record<string, string>;
@@ -229,7 +229,7 @@ export async function abandonUploadSession(uploadSessionId: string): Promise<voi
 }
 
 /** SHA-256 of the original bytes, via WebCrypto. */
-async function sha256Hex(file: File): Promise<string | undefined> {
+export async function sha256Hex(file: File): Promise<string | undefined> {
   if (!globalThis.crypto?.subtle) return undefined;
 
   try {
@@ -241,7 +241,7 @@ async function sha256Hex(file: File): Promise<string | undefined> {
   }
 }
 
-async function errorMessage(
+export async function errorMessage(
   response: Response,
   internalFallback = "The upload could not be completed.",
 ): Promise<string> {

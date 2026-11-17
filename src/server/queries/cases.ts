@@ -21,6 +21,7 @@ import type {
   ImageViewType,
   MasterValue,
   VisitReviewStatus,
+  VisitType,
 } from "@/lib/types";
 
 /**
@@ -130,6 +131,8 @@ export type CaseDetail = {
   completion: CaseCompletionFacts;
   /** Visible to the requester and to administrators; RLS enforces which. */
   editRequests: CaseEditRequestRow[];
+  /** SESSION visits only: uploaded / not-available photo counts per visit. */
+  sessionPhotos: Record<string, { uploaded: number; notAvailable: number }>;
 };
 
 export async function getCaseDetail(
@@ -207,10 +210,27 @@ export async function getCaseDetail(
     reviewerName = reviewer?.display_name ?? null;
   }
 
+  const visits = visitsRes.data ?? [];
+  const sessionIds = visits.filter((v) => v.visit_type === "SESSION").map((v) => v.id);
+  const sessionPhotos: CaseDetail["sessionPhotos"] = {};
+  if (sessionIds.length) {
+    const { data: counts } = await supabase
+      .from("visit_image_summary")
+      .select("visit_id, uploaded_count, not_available_count")
+      .in("visit_id", sessionIds)
+      .returns<{ visit_id: string; uploaded_count: number; not_available_count: number }[]>();
+    for (const row of counts ?? []) {
+      sessionPhotos[row.visit_id] = {
+        uploaded: Number(row.uploaded_count),
+        notAvailable: Number(row.not_available_count),
+      };
+    }
+  }
+
   return {
     summary,
     creatorName: creatorRes.data?.display_name ?? null,
-    visits: visitsRes.data ?? [],
+    visits,
     notes: notesRes.data ?? null,
     changesPerformed: changesRes.data ?? [],
     consent,
@@ -221,6 +241,7 @@ export async function getCaseDetail(
     tags: (tagsRes.data ?? []).map((row) => row.clinical_tags).filter(Boolean),
     completion: (completionRes.data as CaseCompletionFacts) ?? emptyCompletion(),
     editRequests,
+    sessionPhotos,
   };
 }
 
@@ -245,12 +266,26 @@ function emptyCompletion(): CaseCompletionFacts {
 }
 
 export async function listStandardViewTypes(): Promise<ImageViewType[]> {
+  return listViewTypes("CLINICAL");
+}
+
+/** Before/After treatment views, required on every session visit. */
+export async function listSessionViewTypes(): Promise<ImageViewType[]> {
+  return listViewTypes("SESSION");
+}
+
+export async function listViewTypesForVisit(visitType: VisitType): Promise<ImageViewType[]> {
+  return listViewTypes(visitType === "SESSION" ? "SESSION" : "CLINICAL");
+}
+
+async function listViewTypes(appliesTo: "CLINICAL" | "SESSION"): Promise<ImageViewType[]> {
   const supabase = await createSupabaseServerClient();
 
   const { data, error } = await supabase
     .from("image_view_types")
     .select("*")
     .eq("is_active", true)
+    .eq("applies_to", appliesTo)
     .order("sort_order", { ascending: true })
     .returns<ImageViewType[]>();
 
@@ -265,7 +300,14 @@ export async function listStandardViewTypes(): Promise<ImageViewType[]> {
  */
 export async function getVisitImageSlots(visitId: string): Promise<ImageSlot[]> {
   const supabase = await createSupabaseServerClient();
-  const viewTypes = await listStandardViewTypes();
+
+  const { data: visitRow } = await supabase
+    .from("case_visits")
+    .select("visit_type")
+    .eq("id", visitId)
+    .maybeSingle<{ visit_type: VisitType }>();
+
+  const viewTypes = await listViewTypesForVisit(visitRow?.visit_type ?? "BEFORE");
 
   const { data: images } = await supabase
     .from("clinical_images")

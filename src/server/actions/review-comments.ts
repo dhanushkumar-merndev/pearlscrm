@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { requireCaseWriteAccess } from "@/server/services/case-write-access";
 import { AppError, forbidden, notFound } from "@/lib/errors";
 import { addReviewCommentSchema } from "@/lib/validation/schemas";
 import type { ActionInput } from "@/lib/validation/action-input";
@@ -24,6 +25,8 @@ export async function addReviewComment(
   return actionResult(async () => {
     const user = await requirePermission("review:comment");
     const data = addReviewCommentSchema.parse(input);
+
+    await requireCaseWriteAccess(data.caseId);
 
     const admin = createSupabaseAdminClient();
 

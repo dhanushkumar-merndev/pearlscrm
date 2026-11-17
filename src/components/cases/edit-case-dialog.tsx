@@ -47,8 +47,10 @@ export function EditCaseDialog({
   const [pending, startTransition] = useTransition();
 
   const [procedureId, setProcedureId] = useState(summary.procedure_id);
-  const [procedureTypeId, setProcedureTypeId] = useState(summary.procedure_type_id);
-  const [surgeryDate, setSurgeryDate] = useState(summary.surgery_date);
+  // Only offered for surgical treatments that have a type and a date (see the
+  // case header); the fallbacks keep the types honest for anything else.
+  const [procedureTypeId, setProcedureTypeId] = useState(summary.procedure_type_id ?? "");
+  const [surgeryDate, setSurgeryDate] = useState(summary.surgery_date ?? "");
   const [followupAvailability, setFollowupAvailability] = useState(
     summary.followup_availability ?? "",
   );
@@ -60,8 +62,8 @@ export function EditCaseDialog({
     onOpenChange(next);
     if (next) {
       setProcedureId(summary.procedure_id);
-      setProcedureTypeId(summary.procedure_type_id);
-      setSurgeryDate(summary.surgery_date);
+      setProcedureTypeId(summary.procedure_type_id ?? "");
+      setSurgeryDate(summary.surgery_date ?? "");
       setFollowupAvailability(summary.followup_availability ?? "");
       setError(null);
     }

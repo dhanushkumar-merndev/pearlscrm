@@ -86,6 +86,8 @@ export async function getFollowupAttention(limit = 8): Promise<FollowupAttention
     .select("*")
     .is("archived_at", null)
     .eq("status", "ACTIVE")
+    .eq("treatment_mode", "SURGICAL")
+    .not("surgery_date", "is", null)
     .lte("surgery_date", today)
     .order("surgery_date", { ascending: true })
     .limit(200)
@@ -95,7 +97,7 @@ export async function getFollowupAttention(limit = 8): Promise<FollowupAttention
 
   return (data ?? [])
     .map((row) => {
-      const lastActivity = row.latest_followup_date ?? row.surgery_date;
+      const lastActivity = row.latest_followup_date ?? row.surgery_date ?? today;
       const days = daysBetween(lastActivity, today);
 
       return {
@@ -112,4 +114,61 @@ export async function getFollowupAttention(limit = 8): Promise<FollowupAttention
     .filter((row) => row.daysSinceLastActivity >= 35)
     .sort((a, b) => b.daysSinceLastActivity - a.daysSinceLastActivity)
     .slice(0, limit);
+}
+
+function addDaysIso(iso: string, days: number): string {
+  const date = new Date(`${iso}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+/** Surgeries marked for today through the next `days` days. RLS limits the rows. */
+export async function getUpcomingSurgeries(days = 7, limit = 10): Promise<CaseListRow[]> {
+  const supabase = await createSupabaseServerClient();
+  const today = todayIsoDate();
+  const { data, error } = await supabase
+    .from("case_list_view")
+    .select("*")
+    .eq("treatment_mode", "SURGICAL")
+    .eq("status", "ACTIVE")
+    .is("archived_at", null)
+    .gte("surgery_date", today)
+    .lte("surgery_date", addDaysIso(today, days))
+    .order("surgery_date", { ascending: true })
+    .limit(limit)
+    .returns<CaseListRow[]>();
+
+  if (error) throw new AppError("INTERNAL", "Could not load upcoming surgeries.");
+  return data ?? [];
+}
+
+export type VisitDueRow = {
+  id: string;
+  file_id: string;
+  branch_code: string;
+  next_visit_date: string;
+  referred_for_name: string | null;
+  active_treatments: number;
+};
+
+/**
+ * Patients whose next visit (consultation, session or surgery) falls in the
+ * window. File IDs only — the dashboard never shows patient names. VIEWER
+ * accounts get no rows: patients RLS excludes them.
+ */
+export async function getVisitsDue(days = 7, limit = 10): Promise<VisitDueRow[]> {
+  const supabase = await createSupabaseServerClient();
+  const today = todayIsoDate();
+  const { data, error } = await supabase
+    .from("patient_list_view")
+    .select("id, file_id, branch_code, next_visit_date, referred_for_name, active_treatments")
+    .is("archived_at", null)
+    .gte("next_visit_date", today)
+    .lte("next_visit_date", addDaysIso(today, days))
+    .order("next_visit_date", { ascending: true })
+    .limit(limit)
+    .returns<VisitDueRow[]>();
+
+  if (error) throw new AppError("INTERNAL", "Could not load visits due.");
+  return data ?? [];
 }

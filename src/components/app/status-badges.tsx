@@ -87,6 +87,15 @@ export function CaseStatusBadge({ status }: { status: CaseStatus }) {
     );
   }
 
+  if (status === "PLANNED") {
+    return (
+      <Badge variant="outline" className="text-muted-foreground">
+        <CircleDashed aria-hidden />
+        Planned
+      </Badge>
+    );
+  }
+
   return (
     <Badge variant="outline">
       <Clock aria-hidden />

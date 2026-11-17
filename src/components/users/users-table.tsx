@@ -27,6 +27,10 @@ import { formatTimestamp } from "@/lib/dates";
 import { ROLE_LABELS } from "@/lib/permissions";
 import { ROLE_CODES, type RoleCode } from "@/lib/types";
 import { updateUser, type UserListResult } from "@/server/actions/users";
+import { setUserBranch } from "@/server/actions/branches";
+import type { Branch } from "@/lib/types";
+
+const NO_BRANCH = "__none__";
 
 /**
  * User administration table.
@@ -37,9 +41,11 @@ import { updateUser, type UserListResult } from "@/server/actions/users";
 export function UsersTable({
   result,
   currentUserId,
+  branches,
 }: {
   result: UserListResult;
   currentUserId: string;
+  branches: Branch[];
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -75,6 +81,15 @@ export function UsersTable({
     });
   };
 
+  const applyBranch = (userId: string, value: string) => {
+    startTransition(async () => {
+      const result = await setUserBranch({ userId, branchId: value === NO_BRANCH ? null : value });
+      if (!result.ok) toast.error(result.error.message);
+      else toast.success("Branch updated");
+      router.refresh();
+    });
+  };
+
   return (
     <div className="space-y-4">
       <div className="overflow-x-auto rounded-md border">
@@ -85,6 +100,7 @@ export function UsersTable({
             <TableHead>Email</TableHead>
             <TableHead>Role</TableHead>
             <TableHead>Case access</TableHead>
+            <TableHead>Branch</TableHead>
             <TableHead className="hidden lg:table-cell">Last sign-in</TableHead>
             <TableHead>Active</TableHead>
           </TableRow>
@@ -155,6 +171,26 @@ export function UsersTable({
                   ) : (
                     <span className="text-muted-foreground text-sm">All cases</span>
                   )}
+                </TableCell>
+
+                <TableCell>
+                  <Select
+                    value={user.branch_id ?? NO_BRANCH}
+                    disabled={pending}
+                    onValueChange={(value) => applyBranch(user.id, value)}
+                  >
+                    <SelectTrigger className="w-32" aria-label={`Branch for ${user.display_name}`}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NO_BRANCH}>No branch</SelectItem>
+                      {branches.map((branch) => (
+                        <SelectItem key={branch.id} value={branch.id}>
+                          {branch.code} · {branch.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </TableCell>
 
                 <TableCell className="hidden tabular-nums lg:table-cell">

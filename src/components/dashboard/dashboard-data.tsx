@@ -18,6 +18,7 @@ import { formatClinicDate } from "@/lib/dates";
 import { CLINICAL_CACHE_TIME_MS } from "@/lib/query-client";
 import { cn } from "@/lib/utils";
 import type { CaseListRow } from "@/lib/types";
+import type { VisitDueRow } from "@/server/queries/dashboard";
 
 type DashboardData = {
   metrics: {
@@ -29,6 +30,8 @@ type DashboardData = {
   };
   recentCases: CaseListRow[];
   followupAttention: Array<CaseListRow & { daysSinceLastActivity: number; reason: string }>;
+  upcomingSurgeries: CaseListRow[];
+  visitsDue: VisitDueRow[];
 };
 
 const DASHBOARD_QUERY_KEY = ["dashboard"] as const;
@@ -91,7 +94,7 @@ export function DashboardDataPanel({ isAdmin }: { isAdmin: boolean }) {
     );
   }
 
-  const { metrics, recentCases, followupAttention } = query.data;
+  const { metrics, recentCases, followupAttention, upcomingSurgeries, visitsDue } = query.data;
   const cards = [
     { label: "Total Cases", value: metrics.totalCases, href: "/cases?status=any" },
     { label: "Active Follow-ups", value: metrics.activeFollowups, href: "/cases?hasFollowups=yes" },
@@ -116,6 +119,11 @@ export function DashboardDataPanel({ isAdmin }: { isAdmin: boolean }) {
             </CardContent>
           </Card>
         ))}
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-2">
+        <UpcomingSurgeries rows={upcomingSurgeries} />
+        <VisitsDue rows={visitsDue} />
       </div>
 
       <div className="grid gap-6 xl:grid-cols-2">
@@ -152,6 +160,89 @@ function FollowupAttention({ rows }: { rows: DashboardData["followupAttention"] 
         <ul className="divide-y">{rows.map((row) => <li key={row.id} className="flex items-center justify-between gap-3 py-3 first:pt-0"><div className="min-w-0 space-y-1"><div className="flex flex-wrap items-center gap-2"><Link href={`/cases/${row.id}`} className="font-medium hover:underline">{row.case_number}</Link><CaseStatusBadge status={row.status} /><ConsentBadge state={row.image_use_consent === null ? "NOT_RECORDED" : row.image_use_consent ? "YES" : "NO"} /></div><p className="text-muted-foreground truncate text-xs">{row.reason}</p></div><Badge variant="outline" className="shrink-0 tabular-nums">{row.daysSinceLastActivity} days</Badge></li>)}</ul>
       )}
     </CardContent></Card>
+  );
+}
+
+function UpcomingSurgeries({ rows }: { rows: CaseListRow[] }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Upcoming surgeries</CardTitle>
+        <CardDescription>Marked for surgery in the next 7 days. Reminders go out automatically.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {rows.length === 0 ? (
+          <p className="text-muted-foreground text-sm">No surgeries scheduled in the next 7 days.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Treatment</TableHead>
+                  <TableHead className="hidden sm:table-cell">File ID</TableHead>
+                  <TableHead className="hidden sm:table-cell">Branch</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map((row) => (
+                  <TableRow key={row.id}>
+                    <TableCell className="font-medium tabular-nums">{formatClinicDate(row.surgery_date)}</TableCell>
+                    <TableCell>
+                      <Link href={`/cases/${row.id}`} className="hover:underline">
+                        {row.case_number}
+                      </Link>
+                      <span className="text-muted-foreground block text-xs">{row.procedure_name}</span>
+                    </TableCell>
+                    <TableCell className="hidden tabular-nums sm:table-cell">{row.file_id ?? "—"}</TableCell>
+                    <TableCell className="hidden sm:table-cell">{row.branch_code ?? "—"}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function VisitsDue({ rows }: { rows: VisitDueRow[] }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Next visits due</CardTitle>
+        <CardDescription>Patients with a visit, session or surgery booked in the next 7 days.</CardDescription>
+        <CardAction>
+          <Button asChild variant="ghost" size="sm">
+            <Link href="/patients">All patients</Link>
+          </Button>
+        </CardAction>
+      </CardHeader>
+      <CardContent>
+        {rows.length === 0 ? (
+          <p className="text-muted-foreground text-sm">No visits due in the next 7 days.</p>
+        ) : (
+          <ul className="divide-y">
+            {rows.map((row) => (
+              <li key={row.id} className="flex items-center justify-between gap-3 py-2 text-sm">
+                <span className="min-w-0">
+                  <Link href={`/patients/${row.id}`} className="font-medium tabular-nums hover:underline">
+                    {row.file_id}
+                  </Link>
+                  <span className="text-muted-foreground ml-2 truncate">
+                    {row.referred_for_name ?? `${row.active_treatments} active treatment${row.active_treatments === 1 ? "" : "s"}`}
+                  </span>
+                </span>
+                <Badge variant="outline" className="tabular-nums">
+                  {formatClinicDate(row.next_visit_date)}
+                </Badge>
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

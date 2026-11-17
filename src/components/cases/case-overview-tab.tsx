@@ -54,9 +54,28 @@ export function CaseOverviewTab({
           <CardContent>
             <dl className="grid gap-4 sm:grid-cols-2">
               <Detail label="Case ID" value={summary.case_number} mono />
+              {summary.file_id ? <Detail label="Patient File ID" value={summary.file_id} mono /> : null}
               <Detail label="Procedure" value={summary.procedure_name} />
-              <Detail label="Procedure type" value={summary.procedure_type_name} />
-              <Detail label="Date of surgery" value={formatClinicDate(summary.surgery_date)} mono />
+              {summary.treatment_mode === "SESSIONS" ? (
+                <>
+                  <Detail
+                    label="Sessions"
+                    value={`${summary.completed_sessions} of ${summary.planned_sessions ?? "—"} completed`}
+                    mono
+                  />
+                  <Detail label="Start date" value={formatClinicDate(summary.start_date)} mono />
+                  <Detail label="Next session" value={formatClinicDate(summary.next_session_date)} mono />
+                </>
+              ) : (
+                <>
+                  <Detail label="Procedure type" value={summary.procedure_type_name ?? "—"} />
+                  <Detail
+                    label="Date of surgery"
+                    value={summary.surgery_date ? formatClinicDate(summary.surgery_date) : "Not scheduled yet"}
+                    mono
+                  />
+                </>
+              )}
               <Detail
                 label="Follow-up availability"
                 value={summary.followup_availability ?? "Not specified"}
@@ -183,6 +202,8 @@ function Detail({ label, value, mono }: { label: string; value: string; mono?: b
 }
 
 function Timeline({ detail }: { detail: CaseDetail }) {
+  if (detail.summary.treatment_mode === "SESSIONS") return <SessionTimeline detail={detail} />;
+
   const followups = detail.visits
     .filter((visit) => visit.visit_type === "FOLLOW_UP")
     .sort((a, b) => (a.visit_date ?? "").localeCompare(b.visit_date ?? ""));
@@ -246,6 +267,50 @@ function Timeline({ detail }: { detail: CaseDetail }) {
           />
         ))
       )}
+    </ol>
+  );
+}
+
+function SessionTimeline({ detail }: { detail: CaseDetail }) {
+  const sessions = detail.visits
+    .filter((visit) => visit.visit_type === "SESSION")
+    .sort((a, b) => (a.session_number ?? 0) - (b.session_number ?? 0));
+  const planned = detail.summary.planned_sessions ?? sessions.length;
+  const upcoming = Math.max(0, planned - sessions.length);
+
+  return (
+    <ol className="relative ml-3.5 space-y-6 border-l border-border/80 pl-6 pb-1">
+      <TimelineEntry
+        icon={<Calendar className="size-3.5" aria-hidden />}
+        title="Treatment start"
+        meta={formatClinicDate(detail.summary.start_date)}
+        complete={Boolean(detail.summary.start_date)}
+      />
+      {sessions.map((visit) => (
+        <TimelineEntry
+          key={visit.id}
+          icon={<Camera className="size-3.5" aria-hidden />}
+          title={visit.display_label}
+          meta={formatClinicDate(visit.visit_date)}
+          detail={
+            visit.session_status === "COMPLETED"
+              ? "Completed with Before and After photos"
+              : "Photos pending"
+          }
+          complete={visit.session_status === "COMPLETED"}
+        />
+      ))}
+      {upcoming > 0 ? (
+        <TimelineEntry
+          icon={<Calendar className="size-3.5" aria-hidden />}
+          title={`${upcoming} more session${upcoming === 1 ? "" : "s"} planned`}
+          meta={
+            detail.summary.next_session_date
+              ? `Next visit ${formatClinicDate(detail.summary.next_session_date)}`
+              : "Not yet booked"
+          }
+        />
+      ) : null}
     </ol>
   );
 }

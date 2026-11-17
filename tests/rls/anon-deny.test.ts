@@ -55,6 +55,18 @@ const CLINICAL_TABLES = [
   "case_access_grants",
   "app_settings",
   "case_review_comments",
+  // Patients, branches, treatments and reminders (0031–0034).
+  "branches",
+  "branch_file_counters",
+  "patients",
+  "patient_consultations",
+  "patient_notes",
+  "patient_documents",
+  "document_upload_sessions",
+  "case_number_counters",
+  "surgery_reminders",
+  "push_tokens",
+  "job_runs",
 ] as const;
 
 /** Master data is reference vocabulary, but still not public. */
@@ -104,6 +116,24 @@ const PRIVILEGED_RPCS: { name: string; args: Record<string, unknown> }[] = [
 
   { name: "review_visit_images", args: { p_visit_id: NIL, p_decisions: [], p_actor: NIL } },
   { name: "add_review_comment", args: { p_case_id: NIL, p_body: "rls deny test", p_actor: NIL } },
+
+  { name: "next_file_id", args: { p_branch_id: NIL } },
+  { name: "create_patient", args: { p_branch_id: NIL, p_full_name: "rls deny test", p_phone: null, p_sex: null, p_age_years: null, p_referred_by_id: null, p_referral_source: null, p_referred_for_procedure_id: null, p_referral_note: null, p_first_visit_date: null, p_consultation_notes: null, p_next_visit_date: null, p_actor: NIL } },
+  { name: "update_patient", args: { p_patient_id: NIL, p_expected_version: 1, p_full_name: "rls deny test", p_phone: null, p_sex: null, p_age_years: null, p_referred_by_id: null, p_referral_source: null, p_referred_for_procedure_id: null, p_referral_note: null, p_actor: NIL } },
+  { name: "record_consultation", args: { p_patient_id: NIL, p_branch_id: NIL, p_visit_date: "2000-01-01", p_notes: null, p_next_visit_date: null, p_actor: NIL } },
+  { name: "add_patient_note", args: { p_patient_id: NIL, p_case_id: null, p_body: "rls deny test", p_next_visit_date: null, p_actor: NIL } },
+  { name: "finalize_document_upload", args: { p_session_id: NIL, p_file_size: 1, p_sha256: null, p_actor: NIL } },
+  { name: "next_case_number_for", args: { p_prefix: "TX-" } },
+  { name: "create_treatment", args: { p_patient_id: NIL, p_branch_id: null, p_procedure_id: NIL, p_procedure_type_id: null, p_mode: "SESSIONS", p_planned_sessions: 1, p_start_date: "2000-01-01", p_surgery_date: null, p_consultation_id: null, p_followup_availability: null, p_tag_ids: [], p_actor: NIL } },
+  { name: "add_treatment_session", args: { p_case_id: NIL, p_visit_date: "2000-01-01", p_doctor_id: null, p_observation: null, p_next_visit_date: null, p_actor: NIL } },
+  { name: "complete_treatment_session", args: { p_visit_id: NIL, p_actor: NIL } },
+  { name: "link_case_to_patient", args: { p_case_id: NIL, p_patient_id: NIL, p_actor: NIL } },
+  { name: "mark_case_for_surgery", args: { p_case_id: NIL, p_surgery_date: "2000-01-01", p_surgeon_id: NIL, p_actor: NIL } },
+  { name: "cancel_surgery_schedule", args: { p_case_id: NIL, p_actor: NIL } },
+  { name: "dispatch_due_reminders", args: {} },
+  { name: "register_push_token", args: { p_token: "rls-deny-test", p_user_agent: null, p_actor: NIL } },
+  { name: "push_payload", args: { p_id: NIL } },
+  { name: "push_tokens_drop", args: { p_tokens: [] } },
 ];
 
 let anon: SupabaseClient;
